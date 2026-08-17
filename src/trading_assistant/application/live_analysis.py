@@ -1,5 +1,7 @@
 """Live technical-analysis service used by the V1 dashboard."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 from collections.abc import Sequence
