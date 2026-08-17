@@ -11,6 +11,7 @@ import pandas as pd
 from trading_assistant.analysis.pipeline import StockAnalysisInput
 from trading_assistant.analysis.timeframe import TimeframeTrend
 from trading_assistant.data.interfaces import MarketDataProvider, Timeframe
+from trading_assistant.data.validation import validate_ohlcv
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ class MarketDataInputBuilder:
         self.lookback_bars = lookback_bars
 
     def build(self, symbol: str, timestamp: datetime) -> StockAnalysisInput:
-        """Fetch fresh candles and assemble one complete analysis input."""
+        """Fetch, validate, and assemble one complete analysis input."""
         metadata = self.metadata_loader(symbol)
         bars = self.provider.get_ohlcv(
             symbol,
@@ -52,11 +53,18 @@ class MarketDataInputBuilder:
             timestamp - pd.Timedelta(minutes=self.lookback_bars),
             timestamp,
         )
+        bars = bars[-self.lookback_bars :]
         if len(bars) < self.lookback_bars:
             raise ValueError(
                 f"Insufficient market data for {symbol}: "
                 f"expected {self.lookback_bars}, got {len(bars)}"
             )
+        validate_ohlcv(
+            bars,
+            expected_interval=pd.Timedelta(minutes=1).to_pytimedelta(),
+            as_of=timestamp,
+            max_staleness=pd.Timedelta(minutes=2).to_pytimedelta(),
+        )
 
         frame = pd.DataFrame(
             [
@@ -68,7 +76,7 @@ class MarketDataInputBuilder:
                     "close": bar.close,
                     "volume": bar.volume,
                 }
-                for bar in bars[-self.lookback_bars :]
+                for bar in bars
             ]
         )
         entry = float(frame["close"].iloc[-1])
