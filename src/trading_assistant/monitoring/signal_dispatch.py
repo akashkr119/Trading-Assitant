@@ -1,5 +1,7 @@
 """Connect analysis results to alert state and notification delivery."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 from datetime import datetime
