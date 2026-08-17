@@ -68,5 +68,8 @@ def report_as_markdown(report: PerformanceReport) -> str:
         "",
         "## Forward performance",
     ]
-    lines.extend(f"- {horizon} min: {accuracy:.1f}% favorable" for horizon, accuracy in report.horizon_accuracy_pct)
+    lines.extend(
+        f"- {horizon} min: {accuracy:.1f}% favorable"
+        for horizon, accuracy in report.horizon_accuracy_pct
+    )
     return "\n".join(lines)
