@@ -1,5 +1,7 @@
 """Upstox V3 market-data adapter for Indian equities."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 import json
