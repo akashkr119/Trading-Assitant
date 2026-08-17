@@ -61,19 +61,12 @@ def _near(value: float, reference: float, tolerance: float = 0.003) -> bool:
 
 
 def detect_setups(frame: pd.DataFrame) -> list[SetupCandidate]:
-    """Detect V1 candidate setups using the latest completed candle.
-
-    Rules are intentionally conservative and deterministic. Breakouts and
-    breakdowns require a close beyond the prior 20-bar range and relative
-    volume >= 1.2. Pullbacks require alignment with EMA 20 and Supertrend.
-    EMA crosses and VWAP events are detected from the latest two bars.
-    """
+    """Detect V1 candidate setups using the latest completed candle."""
     _require_columns(frame)
 
     close = frame["close"]
     high = frame["high"]
     low = frame["low"]
-    volume = frame["volume"]
     ema9 = ema(close, 9)
     ema20 = ema(close, 20)
     macd_values = macd(close)
@@ -180,7 +173,12 @@ def detect_setups(frame: pd.DataFrame) -> list[SetupCandidate]:
                 SetupDirection.BULLISH,
                 i,
                 70.0,
-                ("EMA 9 above EMA 20", "Supertrend bullish", "price near EMA 20", "volume >= average"),
+                (
+                    "EMA 9 above EMA 20",
+                    "Supertrend bullish",
+                    "price near EMA 20",
+                    "volume >= average",
+                ),
                 "Close below EMA 20 or Supertrend turns bearish",
             )
         )
@@ -198,13 +196,20 @@ def detect_setups(frame: pd.DataFrame) -> list[SetupCandidate]:
                 SetupDirection.BEARISH,
                 i,
                 70.0,
-                ("EMA 9 below EMA 20", "Supertrend bearish", "price near EMA 20", "volume >= average"),
+                (
+                    "EMA 9 below EMA 20",
+                    "Supertrend bearish",
+                    "price near EMA 20",
+                    "volume >= average",
+                ),
                 "Close above EMA 20 or Supertrend turns bullish",
             )
         )
 
     if not pd.isna(macd_values["histogram"].iloc[i]):
-        if float(macd_values["histogram"].iloc[i]) > 0 and float(macd_values["histogram"].iloc[p]) <= 0:
+        current_histogram = float(macd_values["histogram"].iloc[i])
+        previous_histogram = float(macd_values["histogram"].iloc[p])
+        if current_histogram > 0 and previous_histogram <= 0:
             results.append(
                 SetupCandidate(
                     SetupType.EMA_BULLISH_CROSS,
@@ -215,7 +220,7 @@ def detect_setups(frame: pd.DataFrame) -> list[SetupCandidate]:
                     "MACD histogram returns below zero",
                 )
             )
-        elif float(macd_values["histogram"].iloc[i]) < 0 and float(macd_values["histogram"].iloc[p]) >= 0:
+        elif current_histogram < 0 and previous_histogram >= 0:
             results.append(
                 SetupCandidate(
                     SetupType.EMA_BEARISH_CROSS,
