@@ -35,7 +35,7 @@ class MarketDataInputBuilder:
     def __init__(
         self,
         provider: MarketDataProvider,
-        metadata_loader: Callable[[str], AnalysisMetadata],
+        metadata_loader: Callable[[str, datetime], AnalysisMetadata],
         lookback_bars: int = 250,
     ) -> None:
         if lookback_bars < 1:
@@ -46,18 +46,19 @@ class MarketDataInputBuilder:
 
     def build(self, symbol: str, timestamp: datetime) -> StockAnalysisInput:
         """Fetch, validate, and assemble one complete analysis input."""
-        metadata = self.metadata_loader(symbol)
+        metadata = self.metadata_loader(symbol, timestamp)
         bars = self.provider.get_ohlcv(
             symbol,
             Timeframe.ONE_MINUTE,
             timestamp - pd.Timedelta(minutes=self.lookback_bars),
             timestamp,
         )
-        bars = bars[-self.lookback_bars :]
-        if len(bars) < self.lookback_bars:
+        bars = list(bars[-self.lookback_bars :])
+        minimum_bars = min(self.lookback_bars, 30)
+        if len(bars) < minimum_bars:
             raise ValueError(
                 f"Insufficient market data for {symbol}: "
-                f"expected {self.lookback_bars}, got {len(bars)}"
+                f"expected at least {minimum_bars}, got {len(bars)}"
             )
         validate_ohlcv(
             bars,
