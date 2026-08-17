@@ -26,7 +26,9 @@ def test_ema_and_rsi_produce_expected_ranges() -> None:
 def test_macd_returns_line_signal_and_histogram() -> None:
     result = macd(sample_frame()["close"])
     assert list(result.columns) == ["macd", "signal", "histogram"]
-    assert np.isclose(result.iloc[-1]["histogram"], result.iloc[-1]["macd"] - result.iloc[-1]["signal"])
+    histogram = result.iloc[-1]["histogram"]
+    expected = result.iloc[-1]["macd"] - result.iloc[-1]["signal"]
+    assert np.isclose(histogram, expected)
 
 
 def test_vwap_and_relative_volume_are_defined_after_warmup() -> None:
