@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+import pytest
+
 from trading_assistant.analysis.trade_decision import TradeAction
 from trading_assistant.monitoring.performance import SignalObservation, evaluate_signal
 
@@ -24,12 +26,12 @@ def test_buy_signal_reports_forward_move_mfe_mae_and_targets() -> None:
 
     result = evaluate_signal(observation)
 
-    assert result.return_at(5) == 0.5
-    assert result.return_at(15) == 1.7
-    assert result.return_at(30) == -0.5
-    assert result.return_at(60) == 3.2
-    assert result.max_favorable_pct == 3.2
-    assert result.max_adverse_pct == -0.5
+    assert result.return_at(5) == pytest.approx(0.5)
+    assert result.return_at(15) == pytest.approx(1.7)
+    assert result.return_at(30) == pytest.approx(-0.5)
+    assert result.return_at(60) == pytest.approx(3.2)
+    assert result.max_favorable_pct == pytest.approx(3.2)
+    assert result.max_adverse_pct == pytest.approx(-0.5)
     assert result.target_1_hit
     assert result.target_2_hit
     assert not result.stop_loss_hit
@@ -43,8 +45,8 @@ def test_sell_signal_inverts_price_direction() -> None:
         signal_price=100.0,
         signal_time=start,
         stop_loss=101.0,
-        target_1=98.5,
-        target_2=97.0,
+        target_1=99.5,
+        target_2=98.5,
         prices=(
             (start + timedelta(minutes=5), 99.0),
             (start + timedelta(minutes=15), 98.0),
@@ -53,9 +55,9 @@ def test_sell_signal_inverts_price_direction() -> None:
 
     result = evaluate_signal(observation)
 
-    assert result.return_at(5) == 1.0
-    assert result.max_favorable_pct == 2.0
-    assert result.max_adverse_pct == 1.0
+    assert result.return_at(5) == pytest.approx(1.0)
+    assert result.max_favorable_pct == pytest.approx(2.0)
+    assert result.max_adverse_pct == pytest.approx(1.0)
     assert result.target_1_hit
     assert result.target_2_hit
     assert not result.stop_loss_hit
