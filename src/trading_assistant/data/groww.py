@@ -1,5 +1,7 @@
 """Groww market-data adapter using the current historical/live APIs."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 import json
