@@ -30,7 +30,11 @@ def test_breakout_requires_range_close_and_relative_volume() -> None:
     setups = detect_setups(frame)
 
     assert any(item.setup_type == SetupType.BREAKOUT for item in setups)
-    assert all(item.direction == SetupDirection.BULLISH for item in setups if item.setup_type == SetupType.BREAKOUT)
+    assert all(
+        item.direction == SetupDirection.BULLISH
+        for item in setups
+        if item.setup_type == SetupType.BREAKOUT
+    )
 
 
 def test_short_input_is_rejected() -> None:
