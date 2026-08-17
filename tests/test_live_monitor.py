@@ -70,7 +70,7 @@ def test_live_monitor_connects_provider_to_analysis_pipeline(monkeypatch) -> Non
     monitor = LiveMonitor(
         provider,
         ["RELIANCE"],
-        lambda symbol: metadata,
+        lambda symbol, timestamp: metadata,
         dispatcher,
         clock=lambda: datetime(2026, 8, 18, 10, 5),
         sleeper=lambda seconds: None,
