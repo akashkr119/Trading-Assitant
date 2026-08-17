@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -36,3 +37,20 @@ class Watchlist:
 
     def items(self) -> tuple[WatchlistItem, ...]:
         return tuple(self._items[symbol] for symbol in sorted(self._items))
+
+    def export(self) -> tuple[dict[str, str], ...]:
+        """Return a JSON-safe representation suitable for persistence."""
+        return tuple(
+            {"symbol": item.symbol, "added_at": item.added_at}
+            for item in self.items()
+        )
+
+    @classmethod
+    def from_items(cls, items: Iterable[dict[str, str]]) -> Watchlist:
+        """Restore a watchlist from persisted JSON-safe records."""
+        watchlist = cls()
+        for item in items:
+            if set(item) != {"symbol", "added_at"}:
+                raise ValueError("watchlist item must contain symbol and added_at")
+            watchlist.add(item["symbol"], item["added_at"])
+        return watchlist
