@@ -25,7 +25,14 @@ _INTERVALS = {
 class UpstoxMarketDataProvider(MarketDataProvider):
     """Fetch normalized candles from the authenticated Upstox V3 API."""
 
-    def __init__(self, access_token: str, instrument_keys: dict[str, str], *, base_url: str = "https://api.upstox.com/v3", timeout_seconds: float = 10.0) -> None:
+    def __init__(
+        self,
+        access_token: str,
+        instrument_keys: dict[str, str],
+        *,
+        base_url: str = "https://api.upstox.com/v3",
+        timeout_seconds: float = 10.0,
+    ) -> None:
         if not access_token.strip():
             raise ValueError("access_token cannot be empty")
         self.access_token = access_token
@@ -35,20 +42,32 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
-    def get_ohlcv(self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime) -> list[OHLCVBar]:
+    def get_ohlcv(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+    ) -> list[OHLCVBar]:
         """Fetch candles for a date range using the V3 historical endpoint."""
         if start.date() > end.date():
             raise ValueError("start must not be after end")
         unit, interval = _INTERVALS[timeframe]
         instrument_key = self._instrument_key(symbol)
-        path = f"/historical-candle/{quote(instrument_key, safe='')}/{unit}/{interval}/{end.date()}/{start.date()}"
+        path = (
+            f"/historical-candle/{quote(instrument_key, safe='')}/"
+            f"{unit}/{interval}/{end.date()}/{start.date()}"
+        )
         return self._parse_candles(self._request(path))
 
     def get_latest_bar(self, symbol: str, timeframe: Timeframe) -> OHLCVBar:
         """Fetch the latest available intraday candle."""
         unit, interval = _INTERVALS[timeframe]
         instrument_key = self._instrument_key(symbol)
-        path = f"/historical-candle/intraday/{quote(instrument_key, safe='')}/{unit}/{interval}"
+        path = (
+            f"/historical-candle/intraday/{quote(instrument_key, safe='')}/"
+            f"{unit}/{interval}"
+        )
         candles = self._parse_candles(self._request(path))
         if not candles:
             raise UpstoxDataError(f"No candles returned for {symbol}")
@@ -64,7 +83,9 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         try:
             return self.instrument_keys[symbol.strip().upper()]
         except KeyError as error:
-            raise UpstoxDataError(f"No Upstox instrument key configured for {symbol}") from error
+            raise UpstoxDataError(
+                f"No Upstox instrument key configured for {symbol}"
+            ) from error
 
     def _request(self, path: str) -> dict:
         request = Request(
