@@ -1,56 +1,214 @@
 # Trading Assistant
 
-A trading decision-support tool designed to help users identify tradable opportunities, monitor selected stocks in real time, and receive explainable BUY/SELL alerts.
+A Python-based trading decision-support tool for the Indian stock market. The product is designed to help users identify tradable opportunities, understand **why** a stock is selected, monitor user-selected stocks continuously during market hours, and receive explainable BUY/SELL alerts.
 
-> **V1 scope:** The first version focuses on market and sector strength, stock selection, user-controlled monitoring, 1-minute intraday monitoring, explainable setups, risk/reward, and alert state management. Advanced capabilities can be added later.
+> **Educational and decision-support only:** The system must never claim guaranteed profits or guaranteed winning trades. Signals are technical-analysis decisions and must be validated through backtesting and paper trading before real-money use.
 
-## Product Goal
+## Product Vision
 
-The core workflow is:
+The core idea is:
+
+> **Market → Strong Sector → Strong Stocks → User Selects Stocks → 1-Minute Monitoring → Pattern/Setup Detection → BUY/SELL/WATCH/NO TRADE → Detailed Explanation → Alert → Trade Record**
+
+The assistant should support multiple trading styles over time. V1 focuses on **intraday trading**, while the architecture also supports the planned swing-trading engine and future positional trading.
+
+## Core Principles
+
+1. **Market first:** understand the overall market before ranking stocks.
+2. **Sector first:** identify where relative strength and participation are concentrated.
+3. **Stock selection:** find the best tradable stocks inside stronger sectors.
+4. **User control:** the engine suggests candidates; the user selects which stocks enter live monitoring.
+5. **1-minute monitoring:** selected intraday stocks are refreshed and analyzed every minute during market hours.
+6. **Multi-timeframe analysis:** use higher timeframes for context and lower timeframes for entries.
+7. **No single-indicator signals:** indicators are supporting evidence, not standalone BUY/SELL triggers.
+8. **Explain every decision:** every BUY, SELL, WATCH, and NO TRADE result must explain the evidence.
+9. **Risk before reward:** calculate entry, stop loss, targets, and risk/reward before issuing a trade signal.
+10. **WAIT is valid:** the engine must be able to reject a trade or wait for confirmation.
+11. **No alert spam:** refreshing every minute must not produce the same alert every minute.
+12. **Record outcomes:** signals and trade outcomes must be stored for objective performance analysis.
+
+---
+
+# V1 End-to-End Workflow
 
 ```text
-Market
-  ↓
-Market Analysis
-  ↓
-Sector Ranking
-  ↓
-Stock Ranking
-  ↓
-User Selects Stocks
-  ↓
-1-Minute Monitoring
-  ↓
-Multi-Timeframe Analysis
-  ↓
-Pattern + Indicator Analysis
-  ↓
-Setup Detection
-  ↓
-Confirmation + Risk/Reward
-  ↓
-BUY / SELL / WATCH / NO TRADE
-  ↓
-Detailed Explanation
-  ↓
-Alert + Trade Record
+                         MARKET
+                            ↓
+                     MARKET ANALYSIS
+                            ↓
+                     SECTOR RANKING
+                            ↓
+                      STOCK RANKING
+                            ↓
+                   USER SELECTS STOCKS
+                            ↓
+                    1-MINUTE MONITORING
+                            ↓
+                 MULTI-TIMEFRAME ANALYSIS
+                            ↓
+              INDICATOR + PRICE ACTION ENGINE
+                            ↓
+                     SETUP DETECTION
+                            ↓
+                    CONFIRMATION CHECK
+                            ↓
+                     RISK / REWARD CHECK
+                            ↓
+              ┌─────────────┼─────────────┐
+              ↓             ↓             ↓
+             BUY          WATCH          SELL
+              │             │             │
+              └─────────────┼─────────────┘
+                            ↓
+                    EXPLANATION ENGINE
+                            ↓
+                    DASHBOARD + ALERT
+                            ↓
+                       TRADE RECORD
+                            ↓
+                  PERFORMANCE / BACKTEST
 ```
 
-The tool is intended to support different trading styles over time, beginning with intraday trading and allowing swing/positional modes to be added later.
+---
 
-## V1 Workflow
+# Technology Stack
 
-### 1. Market Analysis
+The initial implementation is planned around:
 
-During market hours the engine evaluates the overall market using:
+### Backend
 
-- NIFTY
+- Python 3.13+
+- Pandas
+- NumPy
+- Requests
+
+### Technical Analysis
+
+- `pandas-ta` or `ta`
+
+### Dashboard
+
+- Streamlit
+- Plotly
+
+### Database
+
+- SQLite initially
+- PostgreSQL as a future option
+
+### Alerts
+
+- Telegram Bot API
+
+### Configuration
+
+- YAML or JSON configuration
+
+The data-provider implementation is intentionally separated from the strategy engine so a provider can be changed later without rewriting the analysis logic.
+
+---
+
+# Application Structure
+
+The initial architecture is planned as:
+
+```text
+trading_assistant/
+│
+├── app.py
+│
+├── config/
+│   └── config.yaml
+│
+├── data/
+│   └── market_data.py
+│
+├── indicators/
+│   ├── ema.py
+│   ├── rsi.py
+│   ├── vwap.py
+│   ├── macd.py
+│   └── supertrend.py
+│
+├── scanners/
+│   ├── intraday_scanner.py
+│   ├── swing_scanner.py
+│   └── sector_scanner.py
+│
+├── scoring/
+│   └── confidence_engine.py
+│
+├── patterns/
+│   └── setup_engine.py
+│
+├── risk/
+│   └── risk_engine.py
+│
+├── explanations/
+│   └── explanation_engine.py
+│
+├── alerts/
+│   └── telegram_alert.py
+│
+├── backtest/
+│   └── backtester.py
+│
+├── database/
+│   └── trades.db
+│
+└── reports/
+    └── daily_report.py
+```
+
+The exact file structure may evolve during implementation, but responsibilities should remain separated: data, indicators, scanning, setup detection, scoring, risk, explanations, alerts, storage, and reporting.
+
+---
+
+# Module 1 — Market Data Engine
+
+Create a reusable market-data layer supporting:
+
+- Live quotes
+- Historical data
+- User watchlist data
+- 1-minute candles
+- 5-minute candles
+- 15-minute candles
+- Hourly candles
+- Daily candles
+
+Initial logical functions:
+
+```python
+get_live_quote()
+get_historical_data()
+get_watchlist_data()
+```
+
+The data engine must normalize incoming data into a consistent format so the rest of the application does not depend on a specific provider.
+
+The provider must support reliable intraday refreshes and historical data sufficient for backtesting. The exact production data provider is a separate implementation decision and must not be hard-coded into the strategy design.
+
+---
+
+# Module 2 — Market Analysis / Sentiment Engine
+
+Before stock selection, evaluate:
+
+- NIFTY 50
 - BANKNIFTY
-- India VIX / volatility conditions
-- Market breadth (Advance/Decline)
+- India VIX / volatility
+- Advance/Decline ratio
 - Market momentum
 
-Initial market classification:
+Output:
+
+- Bullish
+- Bearish
+- Neutral
+- Market Sentiment Score (0–100)
+
+Initial classification:
 
 | Score | Classification |
 |---|---|
@@ -60,11 +218,13 @@ Initial market classification:
 | 30–44 | Bearish |
 | 0–29 | Strong Bearish |
 
-The market score represents the current technical environment; it is not a prediction or guaranteed probability of profit.
+The score describes the current technical environment. It is **not** a probability of profit.
 
-### 2. Sector Ranking
+---
 
-The engine first identifies where the strongest market activity is occurring. Initial sectors include:
+# Module 3 — Sector Strength Engine
+
+Initial sectors:
 
 - IT
 - Banking
@@ -76,7 +236,9 @@ The engine first identifies where the strongest market activity is occurring. In
 - Realty
 - PSU
 
-Initial sector strength score:
+The engine ranks sectors from strongest to weakest.
+
+### Sector Strength Score
 
 | Factor | Points |
 |---|---:|
@@ -87,51 +249,120 @@ Initial sector strength score:
 | Momentum | 10 |
 | **Total** | **100** |
 
-The strongest sectors become the first filter for stock discovery.
+The analysis should consider the performance of constituent stocks, sector benchmark/ETF performance where reliable data is available, volume participation, and breadth.
 
-### 3. Stock Ranking
+Example output:
 
-Stocks inside the stronger sectors are ranked using:
+```text
+1. Banking   91
+2. IT        87
+3. Auto      82
+4. Pharma    74
+```
 
-| Factor | Points |
-|---|---:|
-| Trend alignment | 20 |
-| Relative strength | 15 |
-| Price vs VWAP | 10 |
-| RSI | 10 |
-| MACD | 10 |
-| Volume | 15 |
-| Price action | 10 |
-| Breakout/setup | 10 |
-| **Total** | **100** |
+Strong sectors become the first filter for stock discovery.
 
-The tool must explain **why a stock was selected** rather than simply displaying a score.
+---
 
-### 4. User-Controlled Watchlist
+# Module 4 — Best Stock Finder
 
-The engine may suggest stocks, but the user selects which stocks to monitor.
+Within stronger sectors, rank the most tradable stocks.
 
-Once selected, those stocks enter the live monitoring engine.
+Example:
 
-### 5. One-Minute Intraday Monitoring
+```text
+BANKING
 
-Selected stocks are refreshed and analyzed every **1 minute** during market hours.
+1. HDFCBANK    93
+2. ICICIBANK   89
+3. SBIN        85
+4. AXISBANK    81
+```
 
-Important rule:
+Ranking considers:
+
+- Trend strength/alignment
+- Relative strength
+- RSI
+- Volume
+- VWAP
+- Price action
+- Breakout/setup conditions
+- Sector strength
+- Market context
+
+The tool must answer:
+
+> **Why this stock instead of another stock in the same sector?**
+
+A score without an explanation is not considered a complete recommendation.
+
+---
+
+# Module 5 — User-Controlled Watchlist
+
+The system should suggest candidate stocks, but **the user decides which stocks to monitor**.
+
+Example:
+
+```text
+BANKING
+
+☑ HDFCBANK
+☑ ICICIBANK
+☐ SBIN
+☑ AXISBANK
+
+[ START MONITORING ]
+```
+
+Only selected stocks enter the active intraday monitoring engine.
+
+---
+
+# Module 6 — Intraday Scanner
+
+The intraday scanner runs every **1 minute** during market hours.
+
+It should monitor:
+
+- NIFTY 50
+- BANKNIFTY context
+- Selected user watchlist
+- Relevant sector context
+
+Calculate/update:
+
+- EMA 9
+- EMA 20
+- EMA 50
+- EMA 200
+- RSI(14)
+- VWAP
+- MACD
+- Supertrend
+- Relative Volume
+- Support/resistance
+- Price structure
+- Setup/pattern state
+
+### Critical alert rule
 
 > **1-minute refresh does not mean a new alert every minute.**
 
-The engine maintains the state of each setup and only sends a new alert when a meaningful setup or signal state changes.
+A monitored stock maintains a setup state. The engine only generates a new alert when a meaningful setup, trigger, invalidation, or trade state changes.
 
-## Multi-Timeframe Analysis
+---
 
-V1 uses multiple timeframes for different purposes:
+# Multi-Timeframe Analysis
+
+V1 uses different timeframes for different jobs:
 
 | Timeframe | Purpose |
 |---|---|
 | 1-minute | Entry/trigger monitoring |
 | 5-minute | Primary intraday setup and structure |
-| 15-minute | Trend confirmation |
+| 15-minute | Direction confirmation |
 | 1-hour | Larger market/stock context |
 
 Conceptually:
@@ -143,11 +374,15 @@ Conceptually:
 1m  → Entry trigger
 ```
 
-## Technical Analysis Engine
+The engine should not blindly require every timeframe to be identical. Conflicting timeframes should reduce confidence or produce WATCH/NO TRADE when appropriate.
 
-V1 uses the following indicators as supporting evidence rather than isolated BUY/SELL triggers:
+---
 
-### EMA
+# Technical Analysis Engine
+
+## EMA
+
+Use:
 
 - EMA 9
 - EMA 20
@@ -166,31 +401,33 @@ Strong bearish structure:
 Price < EMA 9 < EMA 20 < EMA 50 < EMA 200
 ```
 
-### VWAP
+EMA conditions are trend evidence, not standalone signals.
 
-Bullish intraday environment:
+## VWAP
+
+Bullish intraday evidence:
 
 - Price above VWAP
 - Preferably VWAP rising
 - Pullbacks respecting VWAP strengthen the setup
 
-Bearish intraday environment:
+Bearish intraday evidence:
 
 - Price below VWAP
 - Preferably VWAP falling
 - Retests rejecting VWAP strengthen the setup
 
-### RSI
+## RSI(14)
 
-RSI is used as momentum context, not as a standalone signal.
+RSI is momentum context rather than a standalone BUY/SELL trigger.
 
 - 55–70: healthy bullish momentum
 - 60–70: strong bullish momentum
-- Above 70: strong momentum but possible late-entry risk
+- >70: strong momentum but possible late-entry risk
 - 30–45: bearish momentum
-- Below 30: extreme weakness; does not automatically mean BUY
+- <30: extreme weakness; does not automatically mean BUY
 
-### MACD
+## MACD
 
 Bullish confirmation:
 
@@ -204,53 +441,57 @@ Bearish confirmation:
 - Negative/increasing bearish histogram
 - Stronger when aligned with the broader trend
 
-### Supertrend
+## Supertrend
 
 - Bullish Supertrend supports BUY setups
 - Bearish Supertrend supports SELL setups
 - Conflicting Supertrend reduces setup confidence
 
-### Relative Volume
+## Relative Volume
 
 Initial classification:
 
 | Relative Volume | Interpretation |
 |---|---|
-| < 0.8x | Weak |
+| <0.8x | Weak |
 | 0.8–1.2x | Normal |
 | 1.2–1.5x | Elevated |
 | 1.5–2.0x | Strong |
-| > 2.0x | Very strong |
+| >2.0x | Very Strong |
 
-For breakout setups, volume of approximately **1.5x or higher** is preferred as confirmation. The final implementation should make the volume baseline session-aware.
+For breakout setups, approximately **1.5x or higher** is preferred as volume confirmation. The final implementation should use a session-aware baseline so early-session and late-session volume are compared fairly.
 
-## V1 Setup / Pattern Engine
+---
 
-The first version focuses on a small number of understandable setups.
+# Module 7 — Pattern / Setup Engine
 
-### Breakout — BUY
+V1 intentionally starts with a small set of understandable setups.
+
+## A. Breakout — BUY
 
 Typical confirmation:
 
 1. Clear resistance exists.
-2. Price approaches the resistance.
+2. Price approaches resistance.
 3. Candle closes above resistance.
 4. Volume expands.
 5. 5-minute structure supports the move.
 6. Market and sector context are not strongly against the trade.
+7. The 1-minute trigger confirms the entry.
 
-### Breakdown — SELL
+## B. Breakdown — SELL
 
 Typical confirmation:
 
 1. Clear support exists.
-2. Price approaches the support.
+2. Price approaches support.
 3. Candle closes below support.
 4. Volume expands.
 5. 5-minute structure confirms weakness.
 6. Market and sector context are not strongly against the trade.
+7. The 1-minute trigger confirms the entry.
 
-### Bullish Pullback — BUY
+## C. Bullish Pullback — BUY
 
 Typical confirmation:
 
@@ -259,8 +500,9 @@ Typical confirmation:
 3. Selling pressure decreases.
 4. Bullish reversal candle/structure appears.
 5. Volume confirms recovery.
+6. 1-minute trigger confirms the entry.
 
-### Bearish Pullback — SELL
+## D. Bearish Pullback — SELL
 
 Typical confirmation:
 
@@ -269,12 +511,15 @@ Typical confirmation:
 3. Buying pressure weakens.
 4. Bearish rejection appears.
 5. Volume confirms weakness.
+6. 1-minute trigger confirms the entry.
 
-### Consolidation — WATCH / NO TRADE
+## E. Consolidation — WATCH / NO TRADE
 
 If price is moving sideways without a meaningful confirmed breakout or breakdown, the engine should not force a trade.
 
-## Decision States
+---
+
+# Module 8 — Decision Engine
 
 V1 has four primary user-facing states:
 
@@ -285,13 +530,13 @@ V1 has four primary user-facing states:
 | 🟡 **WATCH** | Interesting setup, but entry trigger is not confirmed |
 | ⚪ **NO TRADE** | Conditions are insufficient or risk is unacceptable |
 
-**WAIT is a valid decision.** The system should never be forced to generate a trade.
+**WAIT is a valid decision.**
 
-## BUY Decision Rules
+## BUY Logic
 
-A BUY should require a confirmed setup rather than one indicator crossing a threshold.
+A BUY requires a confirmed setup, not a single indicator.
 
-Required areas include:
+Required areas:
 
 - Acceptable/strong sector context
 - Market not strongly bearish against the setup
@@ -300,21 +545,21 @@ Required areas include:
 - Supporting price action
 - Acceptable risk/reward
 
-Supporting evidence may include:
+Supporting evidence can include:
 
 - Price above VWAP
 - Bullish EMA structure
-- RSI in a healthy bullish range
+- RSI 55–70
 - Bullish MACD
 - Bullish Supertrend
 - Elevated/strong relative volume
 - Confirmed breakout or bullish pullback
 
-## SELL Decision Rules
+## SELL Logic
 
-A SELL should require a confirmed bearish setup.
+A SELL requires a confirmed bearish setup.
 
-Required areas include:
+Required areas:
 
 - Acceptable/weakening sector context
 - Market not strongly bullish against the setup
@@ -323,19 +568,23 @@ Required areas include:
 - Supporting bearish price action
 - Acceptable risk/reward
 
-Supporting evidence may include:
+Supporting evidence can include:
 
 - Price below VWAP
 - Bearish EMA structure
-- RSI in a bearish range
+- RSI 30–45
 - Bearish MACD
 - Bearish Supertrend
 - Elevated/strong relative volume
 - Confirmed breakdown or bearish pullback
 
-## Setup Score
+---
 
-The V1 setup score is a **quality score**, not a probability of winning.
+# Setup / Confidence Score
+
+The score represents **setup quality**, not probability of winning.
+
+### V1 Operational Score
 
 | Component | Points |
 |---|---:|
@@ -353,33 +602,40 @@ The V1 setup score is a **quality score**, not a probability of winning.
 
 Initial interpretation:
 
-| Score | State |
+| Score | Interpretation |
 |---|---|
-| 0–60 | NO TRADE |
+| 0–60 | NO TRADE / Avoid |
 | 61–75 | WATCH / Moderate |
 | 76–85 | Good Setup |
 | 86–92 | High Quality |
 | 93–100 | Very High Quality |
 
-**Score alone must never trigger a trade.** A high-scoring stock remains WATCH until its actual entry trigger is confirmed.
+**Score alone must never trigger a trade.** A high-scoring stock remains WATCH until the actual entry trigger is confirmed.
 
-## Entry, Stop Loss and Targets
+The original project specification also defined a confidence model using Trend Alignment 20, VWAP 10, RSI 10, MACD 10, Supertrend 10, Volume Spike 15, Breakout 15, Sector Strength 5, and Market Sentiment 5. The V1 operational model above refines that allocation to give explicit weight to price action and to keep setup quality separate from market/sector context. This can be revised after backtesting.
 
-### Entry
+---
 
-The entry is based on the specific setup and confirmed trigger, not a fixed percentage or a single indicator.
+# Risk Engine
 
-### Stop Loss
+Risk is evaluated before a BUY/SELL alert is issued.
+
+## Entry
+
+Entry must come from the specific setup and confirmed trigger. There is no fixed percentage entry rule.
+
+## Stop Loss
 
 Stop loss should be structure-based:
 
-- Breakout: below the breakout level/retest low or relevant structural swing low
-- Pullback: below the pullback low/support
-- SELL setups: the equivalent structural level above the setup
+- Breakout: below the breakout level/retest low or relevant swing low
+- Bullish pullback: below pullback low/support
+- Breakdown: above breakdown level/retest high or relevant swing high
+- Bearish pullback: above rejection high/resistance
 
-ATR should be used as a sanity check so stops are not unrealistically tight.
+ATR should be used as a sanity check so a stop is not unrealistically tight for the current volatility.
 
-### Targets
+## Targets
 
 Targets should consider:
 
@@ -390,19 +646,21 @@ Targets should consider:
 
 Initial preference:
 
-- Target 1: at least approximately 1.5R
-- Target 2: approximately 2R or better when market structure supports it
+- Target 1: approximately **1.5R or better**
+- Target 2: approximately **2R or better** when structure supports it
 
-If a reasonable target cannot be identified, the engine should return **NO TRADE** rather than force an entry.
+If a reasonable target cannot be identified, return **NO TRADE** rather than forcing an entry.
 
-## Explanation Engine — Mandatory
+---
 
-Every BUY, SELL, WATCH, and NO TRADE recommendation must explain the decision.
+# Explanation Engine — Mandatory
+
+Every recommendation must explain the decision.
 
 The engine must answer:
 
 1. **Why this stock?**
-2. **Why BUY/SELL/WATCH/NO TRADE?**
+2. **Why BUY / SELL / WATCH / NO TRADE?**
 3. **What confirms the setup?**
 4. **What is the entry?**
 5. **Where is the stop loss?**
@@ -410,30 +668,33 @@ The engine must answer:
 7. **What is the risk/reward?**
 8. **What invalidates the setup?**
 
-Example BUY explanation:
+The explanation must be generated from the actual conditions that caused the decision. It must not be a generic template that claims confirmations that did not occur.
+
+### Example BUY Alert
 
 ```text
-HDFCBANK — BUY
+🔔 BUY SETUP
 
+Stock: HDFCBANK
 Setup Score: 89/100
 Setup Type: Breakout
 
 WHY THIS STOCK?
-✓ Strong banking sector
-✓ Stock outperforming its sector
-✓ Bullish 5m structure
-✓ Price above VWAP
-✓ EMA alignment bullish
-✓ RSI healthy
-✓ MACD bullish
-✓ Relative volume elevated
-✓ Resistance breakout confirmed
+✓ Banking is one of today's strongest sectors
+✓ HDFCBANK is outperforming the sector
+✓ 5m trend is bullish
+✓ Price is above VWAP
+✓ EMA structure is bullish
+✓ RSI is in a healthy bullish range
+✓ MACD is bullish
+✓ Relative volume is elevated
+✓ Resistance breakout is confirmed
 
 WHY BUY NOW?
 The resistance level has been broken with a confirmed
 1-minute close and supporting volume.
 
-RISK
+TRADE PLAN
 Entry: ₹X
 Stop Loss: ₹X
 Target 1: ₹X
@@ -441,13 +702,11 @@ Target 2: ₹X
 Risk/Reward: 1:2.0
 
 INVALIDATION
-The BUY setup is invalidated if the breakout fails and
-price moves back below the defined invalidation level.
+The BUY setup is invalid if the breakout fails and price
+moves back below the defined invalidation level.
 ```
 
-The explanation should be generated from the actual conditions that caused the decision. It must not use a generic explanation that does not match the detected setup.
-
-## WATCH Example
+### Example WATCH
 
 ```text
 INFY — WATCH
@@ -468,7 +727,7 @@ Trigger:
 Break above the defined resistance with confirmation.
 ```
 
-## NO TRADE Example
+### Example NO TRADE
 
 ```text
 AXISBANK — NO TRADE
@@ -486,11 +745,13 @@ Score: 58/100
 ACTION: NO TRADE
 ```
 
-The engine must be able to explain why it rejected a stock, not only why it selected one.
+The engine must be able to explain why it **rejected** a stock, not only why it selected one.
 
-## Signal State Machine
+---
 
-To prevent repeated alerts and noisy signals, each monitored stock maintains a setup state:
+# Signal State Machine
+
+Each monitored stock maintains a state:
 
 ```text
 NO_SETUP
@@ -518,67 +779,329 @@ INVALIDATED
 NO_SETUP
 ```
 
-The system must not send the same BUY/SELL alert every minute. A new alert should be generated only when a meaningful signal state or trade condition changes.
+This prevents duplicate alerts and makes the monitoring engine stateful.
 
-## V1 Monitoring Architecture
+---
+
+# Module 9 — Telegram Alerts
+
+Telegram alerts should be sent when a meaningful event occurs, such as:
+
+- New BUY signal
+- New SELL signal
+- Setup reaches its configured alert threshold
+- Existing setup materially changes
+- Trade reaches target
+- Trade reaches stop loss
+- Setup becomes invalid
+
+Initial alert preference from the project specification:
+
+> Confidence above approximately **85** is a preferred threshold for high-priority BUY/SELL alerts, but the final alert threshold must also respect the mandatory setup/trigger/risk rules.
+
+### Example
 
 ```text
-                    MARKET
-                       ↓
-                MARKET ANALYSIS
-                       ↓
-                SECTOR RANKING
-                       ↓
-                 STOCK RANKING
-                       ↓
-              USER SELECTS STOCK
-                       ↓
-               1-MIN MONITORING
-                       ↓
-              MULTI-TIMEFRAME DATA
-                       ↓
-               INDICATOR ENGINE
-                       ↓
-                PATTERN ENGINE
-                       ↓
-                 SETUP ENGINE
-                       ↓
-               CONFIRMATION
-                       ↓
-                 RISK ENGINE
-                       ↓
-             ┌─────────┼─────────┐
-             ↓         ↓         ↓
-           BUY       WATCH      SELL
-             │         │         │
-             └─────────┼─────────┘
-                       ↓
-             EXPLANATION ENGINE
-                       ↓
-              DASHBOARD + ALERT
-                       ↓
-                 TRADE RECORD
+BUY ALERT
+
+Stock: INFY
+Price: ₹1650
+Confidence: 94
+
+Reasons:
+✅ Above VWAP
+✅ Strong sector
+✅ Volume spike
+✅ Breakout
+✅ RSI strong
+
+Target: ₹1685
+Stop Loss: ₹1628
 ```
 
-## Future Expansion
+The production alert should include the richer explanation defined by the Explanation Engine.
 
-The architecture should allow additional trading modes and capabilities later, including:
+---
 
-- Swing trading
-- Positional trading
-- More pattern types
-- Backtesting
+# Module 10 — Streamlit Dashboard
+
+The dashboard should provide a professional, clear view of the entire workflow.
+
+## Required sections
+
+### 1. Market Overview
+
+- NIFTY
+- BANKNIFTY
+- India VIX
+- Market sentiment
+- Advance/Decline
+
+### 2. Strongest Sectors
+
+- Sector ranking
+- Sector score
+- Relative strength
+- Participation/breadth
+
+### 3. Top Intraday Opportunities
+
+- Rank
+- Stock
+- Sector
+- Score
+- Setup
+- State
+- Entry/SL/targets when applicable
+- Explanation
+
+### 4. User Watchlist / Live Monitoring
+
+- Selected stocks
+- Current price
+- Trend
+- Setup state
+- Latest analysis
+- Last update time
+
+### 5. Live Alerts
+
+- Recent BUY/SELL alerts
+- Reason summary
+- Entry/SL/targets
+- Invalidation
+
+### 6. Swing Opportunities
+
+- Top swing candidates
+- Setup
+- Score
+- Entry
+- Stop Loss
+- Targets
+
+### 7. Recent Trades
+
+- Signal
+- Entry
+- Exit
+- Result
+- Reason
+
+### 8. Performance Statistics
+
+- Win rate
+- Profit factor
+- Average profit
+- Average loss
+- Maximum drawdown
+- Sharpe ratio
+
+### 9. Backtest Results
+
+- Strategy
+- Date range
+- Total trades
+- Performance metrics
+- Downloadable report
+
+Plotly should be used for interactive charts.
+
+---
+
+# Module 11 — Swing Trading Engine
+
+Swing trading is part of the planned product scope but is secondary to the initial intraday implementation.
+
+Higher timeframes:
+
+- 1-hour
+- 4-hour
+- Daily
+- Weekly
+
+Indicators:
+
+- EMA20
+- EMA50
+- EMA200
+- RSI
+- MACD
+- Supertrend
+
+Generate:
+
+- Entry
+- Stop Loss
+- Target 1
+- Target 2
+- Setup/Confidence Score
+- Explanation
+
+Initial holding period:
+
+**3–30 days**
+
+The swing engine should use the same principles as intraday: market/sector context, setup confirmation, risk/reward, explanation, and state management.
+
+---
+
+# Module 12 — Backtesting and Performance Analysis
+
+The system must support historical strategy testing before real-money use.
+
+Required metrics:
+
+- Total trades
+- Win rate
+- Profit factor
+- Average profit
+- Average loss
+- Maximum drawdown
+- Sharpe ratio
+
+Generate a downloadable performance report.
+
+Backtesting should eventually support:
+
+- Strategy selection
+- Date range
+- Timeframe
+- Entry/exit rules
+- Slippage
+- Brokerage/transaction costs
+- Position sizing
+- Performance by setup type
+- Performance by sector
+- Performance by time of day
+
+The system should store the reasoning behind historical signals so that the user can determine **which setups actually work**, rather than optimizing blindly.
+
+---
+
+# Trade Recording and Learning Loop
+
+Every generated setup and trade should be recordable:
+
+```text
+Signal Generated
+      ↓
+Entry
+      ↓
+Price Movement
+      ↓
+Target / Stop / Manual Exit
+      ↓
+Trade Closed
+      ↓
+Result Stored
+      ↓
+Performance Analysis
+```
+
+Future analysis should answer:
+
+- Which setups work best?
+- Which sectors work best?
+- Which timeframes work best?
+- Breakout vs pullback performance
+- Long vs short performance
+- Time-of-day performance
+- False breakout rate
+- Average R multiple
+- Drawdown
+
+No strategy should be declared successful without sufficient historical and paper-trading evidence.
+
+---
+
+# Development Approach
+
+Development should happen **module-by-module**, while keeping the architecture coherent.
+
+For each implementation module:
+
+1. Define the purpose and inputs/outputs.
+2. Implement production-quality code.
+3. Add logging.
+4. Add error handling.
+5. Add tests.
+6. Verify expected output.
+7. Update documentation.
+8. Commit changes to GitHub.
+
+The first implementation module should be the **Market Data Engine**, but application code should only begin after the product/strategy specification is agreed.
+
+---
+
+# V1 Scope vs Future Scope
+
+## V1
+
+- Market analysis
+- Sector strength ranking
+- Stock ranking
+- User-selected watchlist
+- 1-minute intraday monitoring
+- 1m / 5m / 15m / 1h analysis
+- EMA, RSI, VWAP, MACD, Supertrend, relative volume
+- Breakout/breakdown setups
+- Bullish/bearish pullbacks
+- BUY / SELL / WATCH / NO TRADE
+- Setup quality scoring
+- Entry / SL / targets / risk-reward
+- Mandatory explanations
+- Signal state management
+- Telegram alerts
+- Streamlit dashboard foundation
+- SQLite trade records
+- Backtesting foundation
+
+## Later
+
+- Additional pattern types
+- More trading styles
+- Advanced market breadth
+- More data providers
+- PostgreSQL
+- Advanced backtesting/walk-forward optimization
+- Paper trading integration
+- Strategy optimization based on recorded results
+- Additional notification channels
+- Advanced performance analytics
+- Additional risk-management models
+
+---
+
+# Safety, Risk and Validation
+
+This tool is for **educational and decision-support purposes only**.
+
+It must not:
+
+- Claim guaranteed profits
+- Claim guaranteed winning trades
+- Present a setup score as a win probability
+- Force a trade when evidence is insufficient
+
+Before real-money use, strategies must be evaluated using:
+
+- Historical backtesting
 - Walk-forward testing
+- Realistic slippage
+- Brokerage/transaction costs
 - Paper trading
-- Trade performance analytics
-- Strategy optimization based on recorded outcomes
-- Additional data sources and market analytics
-- More notification channels
+- Drawdown analysis
+- Sufficient sample size
 
-These are **future additions**, not requirements for V1.
+A strong score means **strong alignment with the defined technical criteria**, not a guarantee that price will move in the expected direction.
 
-## Risk and Validation
+---
 
-This tool is a decision-support system, not a guarantee of profitable trades. Before real-money use, strategies should be validated through historical backtesting, walk-forward testing, realistic transaction costs/slippage, and paper trading.
+# Current Status
 
-The engine should record signals and outcomes so that performance can be measured objectively over time.
+**Phase:** Product and V1 strategy specification
+
+**Implementation status:** Strategy and product requirements are being finalized before application development.
+
+**Development rule:** Do not add application code simply to demonstrate progress. First make sure the behavior is understood and documented, then implement it module-by-module and validate each module.
