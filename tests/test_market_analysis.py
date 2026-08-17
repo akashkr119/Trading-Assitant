@@ -36,6 +36,23 @@ def test_market_regime_boundaries() -> None:
 
 
 def test_sector_ranking_is_strongest_first() -> None:
-    weak = score_sector("IT", SectorInputs(trend=40, relative_strength=40, volume=40, breadth=40, momentum=40))
-    strong = score_sector("Banking", SectorInputs(trend=90, relative_strength=90, volume=90, breadth=90, momentum=90))
-    assert [item.sector for item in rank_sectors([weak, strong])] == ["Banking", "IT"]
+    weak_inputs = SectorInputs(
+        trend=40,
+        relative_strength=40,
+        volume=40,
+        breadth=40,
+        momentum=40,
+    )
+    strong_inputs = SectorInputs(
+        trend=90,
+        relative_strength=90,
+        volume=90,
+        breadth=90,
+        momentum=90,
+    )
+    weak = score_sector("IT", weak_inputs)
+    strong = score_sector("Banking", strong_inputs)
+    assert [item.sector for item in rank_sectors([weak, strong])] == [
+        "Banking",
+        "IT",
+    ]
