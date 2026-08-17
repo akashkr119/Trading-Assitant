@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from trading_assistant.analysis.pipeline import StockAnalysisInput
 from trading_assistant.monitoring.analysis_runner import WatchlistAnalysisRunner
 
 
