@@ -61,7 +61,11 @@ class TechnicalMetadataLoader:
         supertrend_aligned = (supertrend_direction > 0) == bullish
         macd_aligned = (macd_histogram >= 0) == bullish
         volume_confirmed = relative_volume_value >= 1.0
-        rsi_confirmed = 45.0 <= rsi_value <= 75.0 if bullish else 25.0 <= rsi_value <= 55.0
+        rsi_confirmed = (
+            45.0 <= rsi_value <= 75.0
+            if bullish
+            else 25.0 <= rsi_value <= 55.0
+        )
 
         stock_score = 50.0
         stock_score += 10.0 if ema_aligned else 0.0
@@ -163,7 +167,11 @@ class TechnicalMetadataLoader:
         if len(close) < 20:
             direction = "neutral"
         else:
-            direction = "bullish" if close.iloc[-1] >= ema(close, 20).iloc[-1] else "bearish"
+            direction = (
+                "bullish"
+                if close.iloc[-1] >= ema(close, 20).iloc[-1]
+                else "bearish"
+            )
         return TimeframeTrend(timeframe=timeframe.value, direction=direction)
 
 
