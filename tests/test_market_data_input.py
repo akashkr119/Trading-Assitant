@@ -39,7 +39,7 @@ def _bars(count: int) -> list[OHLCVBar]:
     ]
 
 
-def _metadata(symbol: str) -> AnalysisMetadata:
+def _metadata(symbol: str, timestamp: datetime) -> AnalysisMetadata:
     return AnalysisMetadata(
         sector="IT",
         market_score=80,
