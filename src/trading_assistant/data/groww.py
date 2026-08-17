@@ -6,8 +6,12 @@ import json
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
+
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class GrowwDataError(RuntimeError):
@@ -70,8 +74,8 @@ class GrowwMarketDataProvider(MarketDataProvider):
         return candles[-1]
 
     def is_market_open(self) -> bool:
-        """Return NSE cash-market session state using the local timezone."""
-        now = datetime.now().astimezone()
+        """Return NSE cash-market session state in India Standard Time."""
+        now = datetime.now(IST)
         current = (now.hour, now.minute)
         return now.weekday() < 5 and (9, 15) <= current < (15, 30)
 
@@ -96,7 +100,7 @@ class GrowwMarketDataProvider(MarketDataProvider):
 
     @staticmethod
     def _format_time(value: datetime) -> str:
-        return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        return value.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
     def _parse_candles(payload: dict) -> list[OHLCVBar]:
