@@ -84,13 +84,25 @@ def rank_stocks(
             "price_action": stock.price_action,
             "setup_quality": stock.setup_quality,
         }
-        score = sum(values[name] * weight for name, weight in selected_weights.items()) / total_weight
+        weighted_score = sum(
+            values[name] * weight for name, weight in selected_weights.items()
+        )
+        score = weighted_score / total_weight
         rankings.append(
-            StockRanking(symbol=stock.symbol, sector=stock.sector, score=round(score, 2))
+            StockRanking(
+                symbol=stock.symbol,
+                sector=stock.sector,
+                score=round(score, 2),
+            )
         )
 
     rankings.sort(key=lambda item: (-item.score, item.symbol))
     return [
-        StockRanking(symbol=item.symbol, sector=item.sector, score=item.score, rank=index)
+        StockRanking(
+            symbol=item.symbol,
+            sector=item.sector,
+            score=item.score,
+            rank=index,
+        )
         for index, item in enumerate(rankings, start=1)
     ]
