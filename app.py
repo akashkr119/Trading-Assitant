@@ -1,5 +1,7 @@
 """Streamlit entry point for the Trading Assistant V1."""
 
+# isort: skip_file
+
 from datetime import datetime
 
 import streamlit as st
