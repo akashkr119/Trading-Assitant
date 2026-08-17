@@ -4,10 +4,10 @@ from datetime import datetime
 
 import streamlit as st
 
+from trading_assistant.application import TradingAssistantApplication
 from trading_assistant.brokers.connection import BrokerName
 from trading_assistant.brokers.facade import BrokerFacade
 from trading_assistant.brokers.factory import build_broker_connection_service
-from trading_assistant.application import TradingAssistantApplication
 
 
 @st.cache_resource
