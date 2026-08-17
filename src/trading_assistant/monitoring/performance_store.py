@@ -27,7 +27,11 @@ class StoredPerformance:
     stop_loss_hit: bool
 
     @classmethod
-    def from_performance(cls, result: SignalPerformance, signal_time: datetime) -> "StoredPerformance":
+    def from_performance(
+        cls,
+        result: SignalPerformance,
+        signal_time: datetime,
+    ) -> "StoredPerformance":
         return cls(
             symbol=result.symbol,
             action=result.action.value,
