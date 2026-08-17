@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from trading_assistant.data.interfaces import OHLCVBar
 
@@ -16,10 +16,10 @@ def validate_ohlcv(
     bars: Sequence[OHLCVBar],
     *,
     expected_interval: timedelta,
-    as_of=None,
+    as_of: datetime | None = None,
     max_staleness: timedelta | None = None,
 ) -> None:
-    """Validate ordering, uniqueness, prices, gaps, and optional freshness."""
+    """Validate ordering, uniqueness, prices, intraday gaps, and freshness."""
     if not bars:
         raise MarketDataValidationError("No market data available")
 
@@ -37,15 +37,16 @@ def validate_ohlcv(
             delta = bar.timestamp - previous
             if delta <= timedelta(0):
                 raise MarketDataValidationError("Candle timestamps are not increasing")
-            if delta > expected_interval:
-                raise MarketDataValidationError(
-                    f"Candle gap detected after {previous.isoformat()}"
-                )
+            # Overnight, weekend, and holiday gaps are expected in exchange data.
+            # Only reject missing candles inside the same trading date.
+            if bar.timestamp.astimezone().date() == previous.astimezone().date():
+                if delta > expected_interval:
+                    raise MarketDataValidationError(
+                        f"Candle gap detected after {previous.isoformat()}"
+                    )
         previous = bar.timestamp
 
     if as_of is not None and max_staleness is not None:
         age = as_of - bars[-1].timestamp
         if age < timedelta(0) or age > max_staleness:
-            raise MarketDataValidationError(
-                f"Latest candle is stale: age={age}"
-            )
+            raise MarketDataValidationError(f"Latest candle is stale: age={age}")
