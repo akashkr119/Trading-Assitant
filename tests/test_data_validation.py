@@ -34,13 +34,22 @@ def test_duplicate_or_out_of_order_timestamp_is_rejected() -> None:
         )
 
 
-def test_candle_gap_is_rejected() -> None:
+def test_same_day_candle_gap_is_rejected() -> None:
     start = datetime(2026, 8, 18, 10, 0)
     with pytest.raises(MarketDataValidationError, match="gap"):
         validate_ohlcv(
             [bar(start), bar(start + timedelta(minutes=3))],
             expected_interval=timedelta(minutes=1),
         )
+
+
+def test_overnight_gap_is_allowed() -> None:
+    first = datetime(2026, 8, 18, 15, 29)
+    next_day = datetime(2026, 8, 19, 9, 15)
+    validate_ohlcv(
+        [bar(first), bar(next_day)],
+        expected_interval=timedelta(minutes=1),
+    )
 
 
 def test_stale_latest_candle_is_rejected() -> None:
