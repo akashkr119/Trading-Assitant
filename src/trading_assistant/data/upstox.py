@@ -6,8 +6,12 @@ import json
 from datetime import datetime
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
+
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class UpstoxDataError(RuntimeError):
@@ -74,8 +78,8 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         return candles[-1]
 
     def is_market_open(self) -> bool:
-        """Return NSE-equity session state using the local clock."""
-        now = datetime.now().astimezone()
+        """Return NSE-equity session state in India Standard Time."""
+        now = datetime.now(IST)
         current = (now.hour, now.minute)
         return now.weekday() < 5 and (9, 15) <= current < (15, 30)
 
