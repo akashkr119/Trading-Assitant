@@ -6,7 +6,10 @@ from datetime import datetime
 
 from trading_assistant.analysis.pipeline import StockAnalysisResult
 from trading_assistant.analysis.trade_decision import TradeAction
-from trading_assistant.monitoring.alert_payload import AlertPayload, build_explained_alert
+from trading_assistant.monitoring.alert_payload import (
+    AlertPayload,
+    build_explained_alert,
+)
 from trading_assistant.monitoring.alerts import AlertType
 from trading_assistant.monitoring.notifier import NotificationDispatcher
 from trading_assistant.monitoring.state import MonitorState, MonitorStateMachine
