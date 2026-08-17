@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 from trading_assistant.brokers.connection import (
     BrokerConnectionService,
-    BrokerName,
     BrokerConnectionState,
+    BrokerName,
     ConnectionStatus,
 )
 
@@ -26,7 +26,11 @@ class FakeConnector:
         )
 
     def status(self) -> BrokerConnectionState:
-        status = ConnectionStatus.CONNECTED if self.connected else ConnectionStatus.DISCONNECTED
+        status = (
+            ConnectionStatus.CONNECTED
+            if self.connected
+            else ConnectionStatus.DISCONNECTED
+        )
         return BrokerConnectionState(self.broker, status, "Status checked.")
 
 
