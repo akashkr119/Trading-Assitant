@@ -10,7 +10,8 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.data.reliability import RetryPolicy, with_retry
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
-from trading_assistant.monitoring.cap_universe import SWING_UNIVERSE, current_cap_classification
+from trading_assistant.monitoring.cap_universe import SWING_UNIVERSE
+from trading_assistant.monitoring.dynamic_cap_classification import CapClassification
 
 
 @dataclass(frozen=True)
@@ -37,23 +38,19 @@ class SwingScanner:
         self,
         provider: MarketDataProvider,
         universe: tuple[str, ...] = SWING_UNIVERSE,
+        classification: dict[str, CapClassification] | None = None,
     ) -> None:
         self.provider = provider
         self.universe = universe
         self.last_scan_errors: dict[str, str] = {}
         self.last_scan_count = 0
         self.last_qualified_count = 0
-        self.cap_source = "AMFI"
-        try:
-            classification = current_cap_classification()
-            self.symbol_to_cap = {
-                symbol: item.segment
-                for symbol, item in classification.items()
-                if symbol in self.universe
-            }
-        except Exception as error:
-            self.symbol_to_cap = {}
-            self.cap_source = f"AMFI unavailable: {error}"
+        self.cap_source = "AMFI" if classification is not None else "not loaded"
+        self.symbol_to_cap = {
+            symbol: item.segment
+            for symbol, item in (classification or {}).items()
+            if symbol in self.universe
+        }
 
     def scan(
         self,
