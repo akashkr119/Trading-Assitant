@@ -4,8 +4,11 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 from datetime import datetime
+from io import BytesIO
+from typing import ClassVar
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -25,16 +28,21 @@ _INTERVALS = {
     Timeframe.FIVE_MINUTES: ("minutes", "5"),
     Timeframe.FIFTEEN_MINUTES: ("minutes", "15"),
     Timeframe.ONE_HOUR: ("hours", "1"),
+    Timeframe.ONE_DAY: ("days", "1"),
 }
+
+_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 
 
 class UpstoxMarketDataProvider(MarketDataProvider):
     """Fetch normalized candles from the authenticated Upstox V3 API."""
 
+    _instrument_cache: ClassVar[dict[str, str] | None] = None
+
     def __init__(
         self,
         access_token: str,
-        instrument_keys: dict[str, str],
+        instrument_keys: dict[str, str] | None = None,
         *,
         base_url: str = "https://api.upstox.com/v3",
         timeout_seconds: float = 10.0,
@@ -43,7 +51,8 @@ class UpstoxMarketDataProvider(MarketDataProvider):
             raise ValueError("access_token cannot be empty")
         self.access_token = access_token
         self.instrument_keys = {
-            symbol.strip().upper(): key for symbol, key in instrument_keys.items()
+            symbol.strip().upper(): key
+            for symbol, key in (instrument_keys or {}).items()
         }
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
@@ -67,13 +76,21 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         return self._parse_candles(self._request(path))
 
     def get_latest_bar(self, symbol: str, timeframe: Timeframe) -> OHLCVBar:
-        """Fetch the latest available intraday candle."""
-        unit, interval = _INTERVALS[timeframe]
+        """Fetch the latest available candle."""
         instrument_key = self._instrument_key(symbol)
-        path = (
-            f"/historical-candle/intraday/{quote(instrument_key, safe='')}/"
-            f"{unit}/{interval}"
-        )
+        if timeframe == Timeframe.ONE_DAY:
+            unit, interval = _INTERVALS[timeframe]
+            end = datetime.now(IST).date()
+            path = (
+                f"/historical-candle/{quote(instrument_key, safe='')}/"
+                f"{unit}/{interval}/{end}"
+            )
+        else:
+            unit, interval = _INTERVALS[timeframe]
+            path = (
+                f"/historical-candle/intraday/{quote(instrument_key, safe='')}/"
+                f"{unit}/{interval}"
+            )
         candles = self._parse_candles(self._request(path))
         if not candles:
             raise UpstoxDataError(f"No candles returned for {symbol}")
@@ -86,12 +103,42 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         return now.weekday() < 5 and (9, 15) <= current < (15, 30)
 
     def _instrument_key(self, symbol: str) -> str:
+        normalized = symbol.strip().upper()
+        if normalized in self.instrument_keys:
+            return self.instrument_keys[normalized]
+        keys = self._load_instrument_keys()
         try:
-            return self.instrument_keys[symbol.strip().upper()]
+            return keys[normalized]
         except KeyError as error:
             raise UpstoxDataError(
-                f"No Upstox instrument key configured for {symbol}"
+                f"No NSE equity instrument key found for {normalized}"
             ) from error
+
+    @classmethod
+    def _load_instrument_keys(cls) -> dict[str, str]:
+        if cls._instrument_cache is not None:
+            return cls._instrument_cache
+        request = Request(
+            _INSTRUMENTS_URL,
+            headers={"Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=20.0) as response:
+                payload = gzip.decompress(response.read())
+            instruments = json.loads(payload)
+        except Exception as error:
+            raise UpstoxDataError(
+                f"Unable to load Upstox NSE instrument master: {error}"
+            ) from error
+        cls._instrument_cache = {
+            str(item["trading_symbol"]).strip().upper(): str(item["instrument_key"])
+            for item in instruments
+            if item.get("segment") == "NSE_EQ"
+            and item.get("instrument_type") == "EQ"
+            and item.get("trading_symbol")
+            and item.get("instrument_key")
+        }
+        return cls._instrument_cache
 
     def _request(self, path: str) -> dict:
         request = Request(
