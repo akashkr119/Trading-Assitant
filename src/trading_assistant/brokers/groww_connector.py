@@ -1,5 +1,7 @@
 """Groww authentication and connection verification adapter."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 import json
