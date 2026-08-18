@@ -86,6 +86,7 @@ class UpstoxConnector:
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.access_token}",
+                "User-Agent": "TradingAssistant/1.0",
             },
         )
         try:
