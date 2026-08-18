@@ -284,7 +284,20 @@ else:
                 app.add_symbol(item, now.isoformat())
             st.rerun()
     else:
-        st.info("Run the swing scanner to get a daily-chart shortlist.")
+        swing_scanner: SwingScanner | None = st.session_state.swing_scanner
+        if swing_scanner is not None and swing_scanner.last_scan_count:
+            st.warning(
+                f"Swing scan completed: {swing_scanner.last_qualified_count} candidates "
+                f"qualified from {swing_scanner.last_scan_count} symbols."
+            )
+            if swing_scanner.last_scan_errors:
+                with st.expander(
+                    f"Show data errors ({len(swing_scanner.last_scan_errors)})"
+                ):
+                    for failed_symbol, error in swing_scanner.last_scan_errors.items():
+                        st.warning(f"{failed_symbol}: {error}")
+        else:
+            st.info("Run the swing scanner to get a daily-chart shortlist.")
 
 
 st.subheader("Selected stocks to monitor")
