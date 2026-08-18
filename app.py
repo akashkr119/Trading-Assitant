@@ -14,6 +14,7 @@ from trading_assistant.brokers.facade import BrokerFacade
 from trading_assistant.brokers.factory import build_broker_connection_service
 from trading_assistant.data.market_calendar import IST
 from trading_assistant.data.provider_factory import build_market_data_provider
+from trading_assistant.monitoring.cap_universe import current_cap_classification
 from trading_assistant.monitoring.market_scanner import MarketScanner
 from trading_assistant.monitoring.notifier import ConsoleNotifier, NotificationDispatcher
 from trading_assistant.monitoring.signal_dispatch import SignalDispatcher
@@ -65,6 +66,7 @@ with st.sidebar:
         [item.value for item in app.broker.available_brokers()],
     )
     selected_broker = BrokerName(broker_name)
+
     token_name = {
         BrokerName.GROWW: "GROWW_ACCESS_TOKEN",
         BrokerName.UPSTOX: "UPSTOX_ACCESS_TOKEN",
@@ -92,6 +94,7 @@ with st.sidebar:
         value=60,
         format_func=lambda value: f"{value} seconds",
     )
+
     if st.button("Disconnect broker", use_container_width=True):
         try:
             state = app.disconnect_broker()
@@ -141,7 +144,15 @@ with connect_col:
                 )
                 st.session_state.live_service = LiveAnalysisService(provider, dispatcher)
                 st.session_state.scanner = MarketScanner(provider)
-                st.session_state.swing_scanner = SwingScanner(provider)
+                try:
+                    cap_classification = current_cap_classification()
+                except Exception as error:
+                    cap_classification = {}
+                    st.warning(f"AMFI cap classification unavailable: {error}")
+                st.session_state.swing_scanner = SwingScanner(
+                    provider,
+                    classification=cap_classification,
+                )
                 st.success(state.message)
                 st.rerun()
             else:
@@ -158,9 +169,11 @@ if not connected:
 else:
     st.subheader("🔎 Intraday Market Scanner")
     st.write(
-        "You do **not** need to tell the tool which stock to use. Scan the liquid NSE universe, "
-        "review the strongest current setups, then choose the stocks you want to monitor intraday."
+        "You do **not** need to tell the tool which stock to use. "
+        "Scan the liquid NSE universe, review the strongest current setups, "
+        "then choose the stocks you want to monitor intraday."
     )
+
     scan_col, limit_col = st.columns([3, 1])
     with scan_col:
         scan_clicked = st.button(
@@ -195,6 +208,7 @@ else:
             for index, item in enumerate(candidates, 1)
         ]
         st.dataframe(rows, use_container_width=True, hide_index=True)
+
         candidate_symbols = [item.symbol for item in candidates]
         chosen = st.multiselect(
             "Choose which candidates to monitor",
@@ -210,15 +224,16 @@ else:
     else:
         st.warning("NSE regular session is closed. Intraday scanner is paused.")
 
+
     st.divider()
     st.subheader("📅 Swing Trading Scanner")
     st.write(
-        "Swing mode scans daily candles for multi-day setups. Results are separated into "
-        "Large Cap, Mid Cap and Small Cap so you can compare opportunities by company size."
+        "Swing mode is separate from intraday mode. It scans daily candles for "
+        "multi-day setups and gives you a shortlist; you choose which stocks to study further."
     )
     st.caption(
-        "V1 uses a curated cap classification and refreshable NSE universe. "
-        "Typical holding horizon: 2–8 weeks. The scanner does not place orders."
+        "Long-only cash-equity candidates for V1. Typical holding horizon: 2–8 weeks. "
+        "The scanner does not place orders."
     )
 
     swing_col, swing_limit_col = st.columns([3, 1])
@@ -229,23 +244,21 @@ else:
             use_container_width=True,
         )
     with swing_limit_col:
-        swing_limit = st.selectbox(
-            "Top per segment",
-            [3, 5, 10],
-            index=2,
-            help="Maximum number shown in each Large/Mid/Small Cap section.",
-        )
+        swing_limit = st.selectbox("Swing candidates", [5, 10, 15], index=1)
 
     if swing_clicked:
         swing_scanner: SwingScanner = st.session_state.swing_scanner
-        with st.spinner("Scanning Large, Mid and Small Cap daily setups..."):
-            st.session_state.swing_candidates = swing_scanner.scan(now, limit=swing_limit)
+        with st.spinner("Scanning daily trends, momentum, volume and breakouts..."):
+            st.session_state.swing_candidates = swing_scanner.scan(
+                now,
+                limit=swing_limit,
+            )
         st.rerun()
 
     swing_candidates = st.session_state.swing_candidates
     if swing_candidates:
-        st.markdown("#### 🔥 Best overall swing opportunities")
-        overall = sorted(swing_candidates, key=lambda item: item.score, reverse=True)[:10]
+        overall = sorted(swing_candidates, key=lambda item: item.score, reverse=True)
+        st.markdown("#### 🔥 Best Overall Swing Opportunities")
         overall_rows = [
             {
                 "Rank": index,
@@ -396,6 +409,7 @@ def live_panel() -> None:
                         f"R:R to Target 1 = {risk.risk_reward_1:.2f} · "
                         f"Invalidation: {result.explanation.invalidation}"
                     )
+
             st.progress(min(max(score / 100.0, 0.0), 1.0), text="Decision confidence")
 
     if st.session_state.notifier.sent:
@@ -422,9 +436,11 @@ for number, step in enumerate(
     (
         "Connect the broker.",
         "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
-        "Let the tool rank stocks from the liquid NSE universe instead of entering a stock manually.",
+        "Let the tool rank stocks from the liquid NSE universe "
+        "instead of entering a stock manually.",
         "Review the shortlist and choose the stocks you want to monitor.",
-        "Use detailed intraday analysis for same-day trades; use the daily swing setup for multi-day ideas.",
+        "Use detailed intraday analysis for same-day trades; "
+        "use the daily swing setup for multi-day ideas.",
         "Record signal outcomes before considering real-money trading.",
     ),
     1,
