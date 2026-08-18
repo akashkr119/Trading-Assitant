@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -69,12 +69,11 @@ class GrowwMarketDataProvider(MarketDataProvider):
     def get_latest_bar(self, symbol: str, timeframe: Timeframe) -> OHLCVBar:
         """Fetch the latest completed candle using a short historical window."""
         end = datetime.now(timezone.utc)
-        start = end.replace(second=0, microsecond=0)
         if timeframe == Timeframe.ONE_DAY:
-            start = start.replace(hour=0, minute=0)
-            start = start.replace(day=max(1, start.day - 5))
+            start = end - timedelta(days=7)
         else:
-            start = start.replace(minute=max(0, start.minute - 10))
+            start = end.replace(second=0, microsecond=0)
+            start = start - timedelta(minutes=10)
         candles = self.get_ohlcv(symbol, timeframe, start, end)
         if not candles:
             raise GrowwDataError(f"No candles returned for {symbol}")
