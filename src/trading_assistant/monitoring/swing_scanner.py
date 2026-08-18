@@ -10,7 +10,7 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.data.reliability import RetryPolicy, with_retry
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
-from trading_assistant.monitoring.cap_universe import SWING_UNIVERSE, SYMBOL_TO_CAP
+from trading_assistant.monitoring.cap_universe import SWING_UNIVERSE, current_cap_classification
 
 
 @dataclass(frozen=True)
@@ -43,13 +43,24 @@ class SwingScanner:
         self.last_scan_errors: dict[str, str] = {}
         self.last_scan_count = 0
         self.last_qualified_count = 0
+        self.cap_source = "AMFI"
+        try:
+            classification = current_cap_classification()
+            self.symbol_to_cap = {
+                symbol: item.segment
+                for symbol, item in classification.items()
+                if symbol in self.universe
+            }
+        except Exception as error:
+            self.symbol_to_cap = {}
+            self.cap_source = f"AMFI unavailable: {error}"
 
     def scan(
         self,
         timestamp: datetime,
         limit: int = 10,
     ) -> tuple[SwingCandidate, ...]:
-        """Return up to ``limit`` candidates per cap segment."""
+        """Return up to ``limit`` candidates per current AMFI cap segment."""
         candidates: list[SwingCandidate] = []
         errors: dict[str, str] = {}
         start = timestamp - timedelta(days=420)
@@ -82,23 +93,15 @@ class SwingScanner:
                 errors[symbol] = str(error)
 
         candidates.sort(key=lambda item: item.score, reverse=True)
-        categorized_segments = {"Large Cap", "Mid Cap", "Small Cap"}
-        categorized = any(
-            item.cap_segment in categorized_segments for item in candidates
-        )
+        segments = ("Large Cap", "Mid Cap", "Small Cap")
+        categorized = any(item.cap_segment in segments for item in candidates)
         if categorized:
-            by_segment: dict[str, list[SwingCandidate]] = {}
-            for candidate in candidates:
-                by_segment.setdefault(candidate.cap_segment, []).append(candidate)
             selected: list[SwingCandidate] = []
-            for segment in ("Large Cap", "Mid Cap", "Small Cap"):
-                selected.extend(
-                    sorted(
-                        by_segment.get(segment, []),
-                        key=lambda item: item.score,
-                        reverse=True,
-                    )[:limit]
-                )
+            for segment in segments:
+                segment_candidates = [
+                    item for item in candidates if item.cap_segment == segment
+                ]
+                selected.extend(segment_candidates[:limit])
         else:
             selected = candidates[:limit]
 
@@ -107,8 +110,7 @@ class SwingScanner:
         self.last_qualified_count = len(candidates)
         return tuple(selected)
 
-    @staticmethod
-    def _score(symbol: str, bars: list[OHLCVBar]) -> SwingCandidate | None:
+    def _score(self, symbol: str, bars: list[OHLCVBar]) -> SwingCandidate:
         frame = pd.DataFrame(
             {
                 "close": [bar.close for bar in bars],
@@ -154,6 +156,8 @@ class SwingScanner:
         ]
         if breakout:
             reasons.append("20-day breakout")
+        if self.cap_source != "AMFI":
+            reasons.append("market-cap classification unavailable")
 
         return SwingCandidate(
             symbol=symbol,
@@ -166,5 +170,5 @@ class SwingScanner:
             target_2=target_2,
             holding_period="2–8 weeks",
             reason=", ".join(reasons),
-            cap_segment=SYMBOL_TO_CAP.get(symbol, "Unclassified"),
+            cap_segment=self.symbol_to_cap.get(symbol, "Unclassified"),
         )
