@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from trading_assistant.data.interfaces import OHLCVBar, Timeframe
+from trading_assistant.data.interfaces import OHLCVBar
 from trading_assistant.monitoring.market_scanner import MarketScanner
 
 
