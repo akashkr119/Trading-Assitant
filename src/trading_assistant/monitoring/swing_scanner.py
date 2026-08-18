@@ -39,6 +39,9 @@ class SwingScanner:
     ) -> None:
         self.provider = provider
         self.universe = universe
+        self.last_scan_errors: dict[str, str] = {}
+        self.last_scan_count = 0
+        self.last_qualified_count = 0
 
     def scan(
         self,
@@ -46,6 +49,7 @@ class SwingScanner:
         limit: int = 10,
     ) -> tuple[SwingCandidate, ...]:
         candidates: list[SwingCandidate] = []
+        errors: dict[str, str] = {}
         start = timestamp - timedelta(days=420)
         for symbol in self.universe:
             try:
@@ -62,15 +66,22 @@ class SwingScanner:
                 usable_bars = list(bars)
                 if self.provider.is_market_open() and len(usable_bars) > 1:
                     usable_bars = usable_bars[:-1]
-                if len(usable_bars) < 220:
+                if len(usable_bars) < 200:
+                    errors[symbol] = (
+                        f"Only {len(usable_bars)} daily candles returned; "
+                        "at least 200 are required."
+                    )
                     continue
                 candidate = self._score(symbol, usable_bars)
                 if candidate is not None:
                     candidates.append(candidate)
-            except Exception:
-                continue
+            except Exception as error:
+                errors[symbol] = str(error)
 
         candidates.sort(key=lambda item: item.score, reverse=True)
+        self.last_scan_errors = errors
+        self.last_scan_count = len(self.universe)
+        self.last_qualified_count = len(candidates)
         return tuple(candidates[:limit])
 
     @staticmethod
@@ -105,18 +116,16 @@ class SwingScanner:
         score += 10.0 if volume else 0.0
         score += 10.0 if breakout else 0.0
 
-        if not trend and score < 70.0:
-            return None
-
         recent_low = float(frame["low"].tail(20).min())
         risk = max(latest - recent_low, latest * 0.03)
         stop_loss = latest - risk
         target_1 = latest + 1.5 * risk
         target_2 = latest + 3.0 * risk
 
+        direction = "BUY" if trend and score >= 70.0 else "WATCH"
         reasons = [
-            "daily trend aligned" if trend else "price above long-term trend",
-            "MACD momentum positive" if macd_histogram > 0 else "momentum needs confirmation",
+            "daily trend aligned" if trend else "trend not fully aligned",
+            "MACD momentum positive" if macd_histogram > 0 else "MACD momentum negative",
             f"RSI {rsi_value:.1f}",
             f"volume {rvol:.2f}x average",
         ]
@@ -125,7 +134,7 @@ class SwingScanner:
 
         return SwingCandidate(
             symbol=symbol,
-            direction="BUY",
+            direction=direction,
             score=min(score, 100.0),
             price=latest,
             change_20d_pct=change_20d_pct,
