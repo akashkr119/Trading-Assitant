@@ -78,7 +78,10 @@ def _download_latest_excel() -> bytes:
 
 
 def _find_column(columns: list[str], *needles: str) -> str | None:
-    normalized = {column: re.sub(r"[^a-z0-9]", "", column.lower()) for column in columns}
+    normalized = {
+        column: re.sub(r"[^a-z0-9]", "", column.lower())
+        for column in columns
+    }
     for needle in needles:
         wanted = re.sub(r"[^a-z0-9]", "", needle.lower())
         for column, value in normalized.items():
@@ -89,7 +92,10 @@ def _find_column(columns: list[str], *needles: str) -> str | None:
 
 def _parse_excel(payload: bytes) -> dict[str, CapClassification]:
     workbook = pd.ExcelFile(BytesIO(payload), engine="openpyxl")
-    frames = [pd.read_excel(workbook, sheet_name=sheet, engine="openpyxl") for sheet in workbook.sheet_names]
+    frames = [
+        pd.read_excel(workbook, sheet_name=sheet, engine="openpyxl")
+        for sheet in workbook.sheet_names
+    ]
     frame = next((item for item in frames if not item.empty), None)
     if frame is None:
         raise RuntimeError("AMFI classification workbook is empty")
@@ -97,7 +103,12 @@ def _parse_excel(payload: bytes) -> dict[str, CapClassification]:
     frame.columns = [str(column).strip() for column in frame.columns]
     symbol_column = _find_column(frame.columns.tolist(), "NSE Symbol", "NSE")
     isin_column = _find_column(frame.columns.tolist(), "ISIN")
-    category_column = _find_column(frame.columns.tolist(), "Category", "Classification", "Cap")
+    category_column = _find_column(
+        frame.columns.tolist(),
+        "Category",
+        "Classification",
+        "Cap",
+    )
     if symbol_column is None:
         raise RuntimeError("AMFI workbook does not contain an NSE symbol column")
 
@@ -107,8 +118,15 @@ def _parse_excel(payload: bytes) -> dict[str, CapClassification]:
         symbol = str(row.get(symbol_column, "")).strip().upper()
         if not symbol or symbol in {"NAN", "NSE SYMBOL"}:
             continue
-        raw_category = str(row.get(category_column, "")).strip() if category_column else ""
-        category = next((name for name in CAP_NAMES if name.lower() in raw_category.lower()), "")
+        raw_category = (
+            str(row.get(category_column, "")).strip()
+            if category_column
+            else ""
+        )
+        category = next(
+            (name for name in CAP_NAMES if name.lower() in raw_category.lower()),
+            "",
+        )
         if not category:
             if position <= 100:
                 category = "Large Cap"
