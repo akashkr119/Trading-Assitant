@@ -18,6 +18,7 @@ from trading_assistant.monitoring.market_scanner import MarketScanner
 from trading_assistant.monitoring.notifier import ConsoleNotifier, NotificationDispatcher
 from trading_assistant.monitoring.signal_dispatch import SignalDispatcher
 from trading_assistant.monitoring.state import MonitorStateMachine
+from trading_assistant.monitoring.swing_scanner import SwingScanner
 
 
 st.set_page_config(
@@ -43,6 +44,8 @@ for key, default in {
     "notifier": ConsoleNotifier(sent=[]),
     "scanner_candidates": (),
     "scanner": None,
+    "swing_candidates": (),
+    "swing_scanner": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -50,7 +53,7 @@ for key, default in {
 
 st.title("📈 Trading Assistant")
 st.caption(
-    "Intraday decision-support for Indian equities — the tool scans the market, "
+    "Intraday and swing decision-support for Indian equities — the tool scans the market, "
     "ranks candidates, and lets you choose what to monitor. It never places orders."
 )
 
@@ -97,6 +100,7 @@ with st.sidebar:
             st.session_state.monitoring = False
             st.session_state.live_service = None
             st.session_state.scanner = None
+            st.session_state.swing_scanner = None
             st.info(state.message)
         except RuntimeError as error:
             st.warning(str(error))
@@ -144,6 +148,7 @@ with connect_col:
                     dispatcher,
                 )
                 st.session_state.scanner = MarketScanner(provider)
+                st.session_state.swing_scanner = SwingScanner(provider)
                 st.success(state.message)
                 st.rerun()
             else:
@@ -158,17 +163,17 @@ with refresh_col:
 if not connected:
     st.info("Connect Groww or Upstox first. The tool will then scan the market for you.")
 else:
-    st.subheader("🔎 Market Scanner")
+    st.subheader("🔎 Intraday Market Scanner")
     st.write(
         "You do **not** need to tell the tool which stock to use. "
         "Scan the liquid NSE universe, review the strongest current setups, "
-        "then choose the stocks you want to monitor."
+        "then choose the stocks you want to monitor intraday."
     )
 
     scan_col, limit_col = st.columns([3, 1])
     with scan_col:
         scan_clicked = st.button(
-            "🔎 Scan market for opportunities",
+            "🔎 Scan intraday opportunities",
             type="primary",
             use_container_width=True,
             disabled=not market_open,
@@ -177,17 +182,14 @@ else:
         scan_limit = st.selectbox("Candidates", [5, 10, 15], index=1)
 
     if scan_clicked:
-        if not market_open:
-            st.warning("The NSE regular session is closed. Scan again during market hours.")
-        else:
-            scanner: MarketScanner = st.session_state.scanner
-            with st.spinner("Scanning liquid NSE stocks and ranking setups..."):
-                st.session_state.scanner_candidates = scanner.scan(now, limit=scan_limit)
-            st.rerun()
+        scanner: MarketScanner = st.session_state.scanner
+        with st.spinner("Scanning liquid NSE stocks and ranking intraday setups..."):
+            st.session_state.scanner_candidates = scanner.scan(now, limit=scan_limit)
+        st.rerun()
 
     candidates = st.session_state.scanner_candidates
     if candidates:
-        st.markdown("#### Ranked candidates")
+        st.markdown("#### Ranked intraday candidates")
         rows = [
             {
                 "Rank": index,
@@ -209,14 +211,80 @@ else:
             candidate_symbols,
             default=[item.symbol for item in candidates[:3]],
         )
-        if st.button("✅ Add selected candidates to monitoring", type="primary"):
+        if st.button("✅ Add selected intraday candidates", type="primary"):
             for item in chosen:
                 app.add_symbol(item, now.isoformat())
             st.rerun()
     elif market_open:
-        st.info("Run the market scanner to get ranked stock suggestions.")
+        st.info("Run the intraday scanner to get ranked stock suggestions.")
     else:
-        st.warning("NSE regular session is closed. The scanner is paused.")
+        st.warning("NSE regular session is closed. Intraday scanner is paused.")
+
+
+    st.divider()
+    st.subheader("📅 Swing Trading Scanner")
+    st.write(
+        "Swing mode is separate from intraday mode. It scans daily candles for "
+        "multi-day setups and gives you a shortlist; you choose which stocks to study further."
+    )
+    st.caption(
+        "Long-only cash-equity candidates for V1. Typical holding horizon: 2–8 weeks. "
+        "The scanner does not place orders."
+    )
+
+    swing_col, swing_limit_col = st.columns([3, 1])
+    with swing_col:
+        swing_clicked = st.button(
+            "📅 Scan swing opportunities",
+            type="secondary",
+            use_container_width=True,
+        )
+    with swing_limit_col:
+        swing_limit = st.selectbox("Swing candidates", [5, 10, 15], index=1)
+
+    if swing_clicked:
+        swing_scanner: SwingScanner = st.session_state.swing_scanner
+        with st.spinner("Scanning daily trends, momentum, volume and breakouts..."):
+            st.session_state.swing_candidates = swing_scanner.scan(
+                now,
+                limit=swing_limit,
+            )
+        st.rerun()
+
+    swing_candidates = st.session_state.swing_candidates
+    if swing_candidates:
+        st.markdown("#### Ranked swing candidates")
+        swing_rows = [
+            {
+                "Rank": index,
+                "Symbol": item.symbol,
+                "Bias": item.direction,
+                "Score": f"{item.score:.0f}/100",
+                "Price": f"₹{item.price:.2f}",
+                "20D": f"{item.change_20d_pct:+.2f}%",
+                "Stop": f"₹{item.stop_loss:.2f}",
+                "Target 1": f"₹{item.target_1:.2f}",
+                "Target 2": f"₹{item.target_2:.2f}",
+                "Hold": item.holding_period,
+                "Why": item.reason,
+            }
+            for index, item in enumerate(swing_candidates, 1)
+        ]
+        st.dataframe(swing_rows, use_container_width=True, hide_index=True)
+
+        swing_symbols = [item.symbol for item in swing_candidates]
+        swing_chosen = st.multiselect(
+            "Choose swing candidates for detailed review",
+            swing_symbols,
+            default=[item.symbol for item in swing_candidates[:3]],
+            key="swing_selection",
+        )
+        if st.button("📌 Add selected swing stocks to watchlist", type="primary"):
+            for item in swing_chosen:
+                app.add_symbol(item, now.isoformat())
+            st.rerun()
+    else:
+        st.info("Run the swing scanner to get a daily-chart shortlist.")
 
 
 st.subheader("Selected stocks to monitor")
@@ -232,7 +300,7 @@ if symbols:
                 use_container_width=True,
             )
 else:
-    st.info("No stocks selected yet. Use the market scanner above.")
+    st.info("No stocks selected yet. Use one of the scanners above.")
 
 
 @st.fragment(run_every=refresh_seconds if st.session_state.monitoring else None)
@@ -242,11 +310,11 @@ def live_panel() -> None:
         return
 
     if not service.builder.provider.is_market_open():
-        st.warning("NSE regular session is closed. Live analysis is paused.")
+        st.warning("NSE regular session is closed. Live intraday analysis is paused.")
         return
 
     current_time = datetime.now(IST)
-    with st.spinner("Running detailed multi-timeframe analysis..."):
+    with st.spinner("Running detailed multi-timeframe intraday analysis..."):
         results = service.analyze(symbols, current_time)
     st.session_state.results = results
     app.set_results(results)
@@ -257,10 +325,10 @@ def live_panel() -> None:
                 st.warning(f"{failed_symbol}: {error}")
 
     if not results:
-        st.info("No qualifying setup detected in the selected stocks.")
+        st.info("No qualifying intraday setup detected in the selected stocks.")
         return
 
-    st.subheader("📢 Live Signals")
+    st.subheader("📢 Live Intraday Signals")
     st.caption(f"Last analysis: {current_time.strftime('%H:%M:%S IST')}")
 
     for result in results:
@@ -310,9 +378,9 @@ def live_panel() -> None:
 
 if connected and symbols:
     st.session_state.monitoring = st.toggle(
-        "Enable live monitoring",
+        "Enable live intraday monitoring",
         value=st.session_state.monitoring,
-        help="When enabled, the dashboard rechecks the selected stocks automatically.",
+        help="When enabled, the dashboard rechecks selected stocks automatically during market hours.",
     )
 
 live_panel()
@@ -322,11 +390,11 @@ st.subheader("Today's workflow")
 for number, step in enumerate(
     (
         "Connect the broker.",
-        "Scan the market — the tool ranks candidate stocks automatically.",
-        "Review the ranked candidates and select the stocks you want to monitor.",
-        "Run detailed multi-timeframe analysis and receive BUY/SELL/WATCH decisions.",
-        "Record signal outcomes for 5/15/30/60-minute performance validation.",
-        "Do not use real money until the 2–3 day paper-monitoring results are reviewed.",
+        "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
+        "Let the tool rank stocks from the liquid NSE universe instead of entering a stock manually.",
+        "Review the shortlist and choose the stocks you want to monitor.",
+        "Use detailed intraday analysis for same-day trades; use the daily swing setup for multi-day ideas.",
+        "Record signal outcomes before considering real-money trading.",
     ),
     1,
 ):
