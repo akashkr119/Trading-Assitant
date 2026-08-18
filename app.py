@@ -436,9 +436,11 @@ for number, step in enumerate(
     (
         "Connect the broker.",
         "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
-        "Let the tool rank stocks from the liquid NSE universe instead of entering a stock manually.",
+        "Let the tool rank stocks from the liquid NSE universe "
+        "instead of entering a stock manually.",
         "Review the shortlist and choose the stocks you want to monitor.",
-        "Use detailed intraday analysis for same-day trades; use the daily swing setup for multi-day ideas.",
+        "Use detailed intraday analysis for same-day trades; "
+        "use the daily swing setup for multi-day ideas.",
         "Record signal outcomes before considering real-money trading.",
     ),
     1,
