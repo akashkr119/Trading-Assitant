@@ -6,102 +6,26 @@ from __future__ import annotations
 # pretending that market-cap data is real-time. The scanner should later replace
 # this with a live market-cap source when one is available.
 LARGE_CAP_UNIVERSE = (
-    "RELIANCE",
-    "TCS",
-    "HDFCBANK",
-    "BHARTIARTL",
-    "ICICIBANK",
-    "INFY",
-    "SBIN",
-    "LICI",
-    "HINDUNILVR",
-    "ITC",
-    "LT",
-    "BAJFINANCE",
-    "MARUTI",
-    "KOTAKBANK",
-    "AXISBANK",
-    "SUNPHARMA",
-    "M&M",
-    "HCLTECH",
-    "TITAN",
-    "ULTRACEMCO",
-    "NTPC",
-    "ONGC",
-    "POWERGRID",
-    "TATASTEEL",
-    "ADANIENT",
-    "ADANIPORTS",
-    "TATAMOTORS",
-    "TCS",
-    "WIPRO",
-    "NESTLEIND",
+    "RELIANCE", "TCS", "HDFCBANK", "BHARTIARTL", "ICICIBANK", "INFY",
+    "SBIN", "LICI", "HINDUNILVR", "ITC", "LT", "BAJFINANCE", "MARUTI",
+    "KOTAKBANK", "AXISBANK", "SUNPHARMA", "M&M", "HCLTECH", "TITAN",
+    "ULTRACEMCO", "NTPC", "ONGC", "POWERGRID", "TATASTEEL", "ADANIENT",
+    "ADANIPORTS", "TATAMOTORS", "WIPRO", "NESTLEIND", "ASIANPAINT",
 )
 
 MID_CAP_UNIVERSE = (
-    "DIXON",
-    "POLYCAB",
-    "TRENT",
-    "MAXHEALTH",
-    "HINDALCO",
-    "JSWSTEEL",
-    "TATACONSUM",
-    "BEL",
-    "INDUSTOWER",
-    "VOLTAS",
-    "CUMMINSIND",
-    "HAVELLS",
-    "TVSMOTOR",
-    "BHARATFORG",
-    "BOSCHLTD",
-    "MPHASIS",
-    "PERSISTENT",
-    "COFORGE",
-    "IDFCFIRSTB",
-    "FEDERALBNK",
-    "ASHOKLEY",
-    "AUBANK",
-    "BHEL",
-    "CANBK",
-    "INDIANB",
-    "NMDC",
-    "SAIL",
-    "RECLTD",
-    "PFC",
-    "INDHOTEL",
+    "DIXON", "POLYCAB", "TRENT", "MAXHEALTH", "HINDALCO", "JSWSTEEL",
+    "TATACONSUM", "BEL", "INDUSTOWER", "VOLTAS", "CUMMINSIND", "HAVELLS",
+    "TVSMOTOR", "BHARATFORG", "BOSCHLTD", "MPHASIS", "PERSISTENT", "COFORGE",
+    "IDFCFIRSTB", "FEDERALBNK", "ASHOKLEY", "AUBANK", "BHEL", "CANBK",
+    "INDIANB", "NMDC", "SAIL", "RECLTD", "PFC", "INDHOTEL",
 )
 
 SMALL_CAP_UNIVERSE = (
-    "KAYNES",
-    "CDSL",
-    "BSE",
-    "IREDA",
-    "IRFC",
-    "RVNL",
-    "HUDCO",
-    "NBCC",
-    "MAZDOCK",
-    "COCHINSHIP",
-    "ITI",
-    "RITES",
-    "CESC",
-    "KPIL",
-    "KALYANKJIL",
-    "IEX",
-    "MCX",
-    "HFCL",
-    "SONATSOFTW",
-    "EASEMYTRIP",
-    "JWL",
-    "DELHIVERY",
-    "CLEAN",
-    "KFINTECH",
-    "CDSL",
-    "INOXWIND",
-    "SUZLON",
-    "NBCC",
-    "UJJIVANSFB",
-    "JYOTHYLAB",
+    "KAYNES", "CDSL", "BSE", "IREDA", "IRFC", "RVNL", "HUDCO", "NBCC",
+    "MAZDOCK", "COCHINSHIP", "ITI", "RITES", "CESC", "KPIL", "KALYANKJIL",
+    "IEX", "MCX", "HFCL", "SONATSOFTW", "EASEMYTRIP", "JWL", "DELHIVERY",
+    "CLEAN", "KFINTECH", "INOXWIND", "SUZLON", "UJJIVANSFB", "JYOTHYLAB",
 )
 
 CAP_UNIVERSES = {
@@ -110,4 +34,12 @@ CAP_UNIVERSES = {
     "Small Cap": SMALL_CAP_UNIVERSE,
 }
 
-SWING_UNIVERSE = tuple(dict.fromkeys(symbol for symbols in CAP_UNIVERSES.values() for symbol in symbols))
+SWING_UNIVERSE = tuple(
+    dict.fromkeys(symbol for symbols in CAP_UNIVERSES.values() for symbol in symbols)
+)
+
+SYMBOL_TO_CAP = {
+    symbol: cap
+    for cap, symbols in CAP_UNIVERSES.items()
+    for symbol in symbols
+}
