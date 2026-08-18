@@ -1,5 +1,7 @@
 """Market scanner that ranks candidate NSE stocks before detailed analysis."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 from dataclasses import dataclass
