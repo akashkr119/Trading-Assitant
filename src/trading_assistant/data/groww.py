@@ -25,6 +25,7 @@ _INTERVALS = {
     Timeframe.FIVE_MINUTES: "5minute",
     Timeframe.FIFTEEN_MINUTES: "15minute",
     Timeframe.ONE_HOUR: "1hour",
+    Timeframe.ONE_DAY: "1day",
 }
 
 
@@ -69,7 +70,11 @@ class GrowwMarketDataProvider(MarketDataProvider):
         """Fetch the latest completed candle using a short historical window."""
         end = datetime.now(timezone.utc)
         start = end.replace(second=0, microsecond=0)
-        start = start.replace(minute=max(0, start.minute - 10))
+        if timeframe == Timeframe.ONE_DAY:
+            start = start.replace(hour=0, minute=0)
+            start = start.replace(day=max(1, start.day - 5))
+        else:
+            start = start.replace(minute=max(0, start.minute - 10))
         candles = self.get_ohlcv(symbol, timeframe, start, end)
         if not candles:
             raise GrowwDataError(f"No candles returned for {symbol}")
