@@ -10,10 +10,7 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.data.reliability import RetryPolicy, with_retry
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
-from trading_assistant.monitoring.cap_universe import (
-    SWING_UNIVERSE,
-    SYMBOL_TO_CAP,
-)
+from trading_assistant.monitoring.cap_universe import SWING_UNIVERSE, SYMBOL_TO_CAP
 
 
 @dataclass(frozen=True)
@@ -52,7 +49,7 @@ class SwingScanner:
         timestamp: datetime,
         limit: int = 10,
     ) -> tuple[SwingCandidate, ...]:
-        """Return up to ``limit`` candidates per cap segment."""
+        """Return up to ``limit`` candidates per cap segment for the default universe."""
         candidates: list[SwingCandidate] = []
         errors: dict[str, str] = {}
         start = timestamp - timedelta(days=420)
@@ -84,22 +81,27 @@ class SwingScanner:
             except Exception as error:
                 errors[symbol] = str(error)
 
-        by_segment: dict[str, list[SwingCandidate]] = {}
-        for candidate in candidates:
-            by_segment.setdefault(candidate.cap_segment, []).append(candidate)
-
-        selected: list[SwingCandidate] = []
-        for segment in ("Large Cap", "Mid Cap", "Small Cap"):
-            segment_candidates = sorted(
-                by_segment.get(segment, []),
-                key=lambda item: item.score,
-                reverse=True,
-            )
-            selected.extend(segment_candidates[:limit])
+        candidates.sort(key=lambda item: item.score, reverse=True)
+        categorized = any(item.cap_segment in {"Large Cap", "Mid Cap", "Small Cap"} for item in candidates)
+        if categorized:
+            by_segment: dict[str, list[SwingCandidate]] = {}
+            for candidate in candidates:
+                by_segment.setdefault(candidate.cap_segment, []).append(candidate)
+            selected: list[SwingCandidate] = []
+            for segment in ("Large Cap", "Mid Cap", "Small Cap"):
+                selected.extend(
+                    sorted(
+                        by_segment.get(segment, []),
+                        key=lambda item: item.score,
+                        reverse=True,
+                    )[:limit]
+                )
+        else:
+            selected = candidates[:limit]
 
         self.last_scan_errors = errors
         self.last_scan_count = len(self.universe)
-        self.last_qualified_count = len(selected)
+        self.last_qualified_count = len(candidates)
         return tuple(selected)
 
     @staticmethod
