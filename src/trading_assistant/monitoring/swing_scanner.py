@@ -59,9 +59,12 @@ class SwingScanner:
                     policy=RetryPolicy(attempts=2, initial_delay_seconds=0.1),
                     sleeper=lambda _: None,
                 )
-                if len(bars) < 220:
+                usable_bars = list(bars)
+                if self.provider.is_market_open() and len(usable_bars) > 1:
+                    usable_bars = usable_bars[:-1]
+                if len(usable_bars) < 220:
                     continue
-                candidate = self._score(symbol, list(bars))
+                candidate = self._score(symbol, usable_bars)
                 if candidate is not None:
                     candidates.append(candidate)
             except Exception:
@@ -115,12 +118,11 @@ class SwingScanner:
             "daily trend aligned" if trend else "price above long-term trend",
             "MACD momentum positive" if macd_histogram > 0 else "momentum needs confirmation",
             f"RSI {rsi_value:.1f}",
-            f"volume {rvol:.2f}x average" if volume else f"volume {rvol:.2f}x average",
+            f"volume {rvol:.2f}x average",
         ]
         if breakout:
             reasons.append("20-day breakout")
 
-        holding_period = "2–8 weeks"
         return SwingCandidate(
             symbol=symbol,
             direction="BUY",
@@ -130,6 +132,6 @@ class SwingScanner:
             stop_loss=stop_loss,
             target_1=target_1,
             target_2=target_2,
-            holding_period=holding_period,
+            holding_period="2–8 weeks",
             reason=", ".join(reasons),
         )
