@@ -109,14 +109,28 @@ class GrowwMarketDataProvider(MarketDataProvider):
         return value.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
-    def _parse_candles(payload: dict) -> list[OHLCVBar]:
+    def _parse_timestamp(value: object) -> datetime:
+        """Normalize Groww epoch or ISO-8601 candle timestamps to UTC."""
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        if isinstance(value, str):
+            try:
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            except ValueError:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=IST)
+                return parsed.astimezone(timezone.utc)
+        raise GrowwDataError(f"Unsupported candle timestamp: {value!r}")
+
+    @classmethod
+    def _parse_candles(cls, payload: dict) -> list[OHLCVBar]:
         candles = payload.get("payload", {}).get("candles", [])
         result: list[OHLCVBar] = []
         for candle in candles:
-            timestamp = datetime.fromtimestamp(float(candle[0]), tz=timezone.utc)
             result.append(
                 OHLCVBar(
-                    timestamp=timestamp,
+                    timestamp=cls._parse_timestamp(candle[0]),
                     open=float(candle[1]),
                     high=float(candle[2]),
                     low=float(candle[3]),
