@@ -27,6 +27,16 @@ def test_upstox_provider_is_built_from_environment(monkeypatch) -> None:
     assert provider.instrument_keys["RELIANCE"] == "NSE_EQ|INE002A01018"
 
 
+def test_upstox_provider_can_auto_resolve_instrument_keys(monkeypatch) -> None:
+    monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "upstox-token")
+    monkeypatch.delenv("UPSTOX_INSTRUMENT_KEYS", raising=False)
+
+    provider = build_market_data_provider(BrokerName.UPSTOX)
+
+    assert isinstance(provider, UpstoxMarketDataProvider)
+    assert provider.instrument_keys == {}
+
+
 def test_upstox_factory_rejects_malformed_instrument_mapping(monkeypatch) -> None:
     monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "upstox-token")
     monkeypatch.setenv("UPSTOX_INSTRUMENT_KEYS", "RELIANCE")
