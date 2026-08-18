@@ -7,11 +7,16 @@ import os
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
 
+import truststore
+
 from trading_assistant.brokers.connection import (
     BrokerConnectionState,
     BrokerName,
     ConnectionStatus,
 )
+
+
+truststore.inject_into_ssl()
 
 
 class GrowwAuthenticationError(RuntimeError):
