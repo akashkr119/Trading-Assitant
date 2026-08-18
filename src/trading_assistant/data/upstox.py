@@ -8,7 +8,7 @@ import gzip
 import json
 from datetime import datetime
 from typing import ClassVar
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,7 @@ _INTERVALS = {
 }
 
 _INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
+_INSTRUMENT_SEARCH_URL = "https://api.upstox.com/v2/instruments/search"
 
 
 class UpstoxMarketDataProvider(MarketDataProvider):
@@ -106,12 +107,11 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         if normalized in self.instrument_keys:
             return self.instrument_keys[normalized]
         keys = self._load_instrument_keys()
-        try:
+        if normalized in keys:
             return keys[normalized]
-        except KeyError as error:
-            raise UpstoxDataError(
-                f"No NSE equity instrument key found for {normalized}"
-            ) from error
+        key = self._search_instrument_key(normalized)
+        self.instrument_keys[normalized] = key
+        return key
 
     @classmethod
     def _load_instrument_keys(cls) -> dict[str, str]:
@@ -119,16 +119,22 @@ class UpstoxMarketDataProvider(MarketDataProvider):
             return cls._instrument_cache
         request = Request(
             _INSTRUMENTS_URL,
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "TradingAssistant/1.0",
+            },
         )
         try:
             with urlopen(request, timeout=20.0) as response:
-                payload = gzip.decompress(response.read())
+                raw = response.read()
+            try:
+                payload = gzip.decompress(raw)
+            except OSError:
+                payload = raw
             instruments = json.loads(payload)
-        except Exception as error:
-            raise UpstoxDataError(
-                f"Unable to load Upstox NSE instrument master: {error}"
-            ) from error
+        except Exception:
+            cls._instrument_cache = {}
+            return cls._instrument_cache
         cls._instrument_cache = {
             str(item["trading_symbol"]).strip().upper(): str(item["instrument_key"])
             for item in instruments
@@ -139,12 +145,52 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         }
         return cls._instrument_cache
 
+    def _search_instrument_key(self, symbol: str) -> str:
+        query = urlencode(
+            {
+                "query": symbol,
+                "exchanges": "NSE",
+                "segments": "EQ",
+                "records": 30,
+            }
+        )
+        request = Request(
+            f"{_INSTRUMENT_SEARCH_URL}?{query}",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.access_token}",
+                "User-Agent": "TradingAssistant/1.0",
+            },
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.load(response)
+        except Exception as error:
+            raise UpstoxDataError(
+                f"Unable to resolve NSE instrument for {symbol}: {error}"
+            ) from error
+        if payload.get("status") != "success":
+            raise UpstoxDataError(
+                f"Instrument search failed for {symbol}: {payload}"
+            )
+        matches = [
+            item
+            for item in payload.get("data", [])
+            if item.get("segment") == "NSE_EQ"
+            and item.get("instrument_type") == "EQ"
+            and str(item.get("trading_symbol", "")).upper() == symbol
+        ]
+        if not matches:
+            raise UpstoxDataError(f"No NSE equity instrument key found for {symbol}")
+        return str(matches[0]["instrument_key"])
+
     def _request(self, path: str) -> dict:
         request = Request(
             f"{self.base_url}{path}",
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.access_token}",
+                "User-Agent": "TradingAssistant/1.0",
             },
         )
         try:
