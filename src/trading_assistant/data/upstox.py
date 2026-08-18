@@ -7,7 +7,6 @@ from __future__ import annotations
 import gzip
 import json
 from datetime import datetime
-from io import BytesIO
 from typing import ClassVar
 from urllib.parse import quote
 from urllib.request import Request, urlopen
