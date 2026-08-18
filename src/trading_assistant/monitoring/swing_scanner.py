@@ -10,7 +10,10 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.data.reliability import RetryPolicy, with_retry
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
-from trading_assistant.monitoring.market_scanner import NIFTY50_UNIVERSE
+from trading_assistant.monitoring.cap_universe import (
+    SWING_UNIVERSE,
+    SYMBOL_TO_CAP,
+)
 
 
 @dataclass(frozen=True)
@@ -27,15 +30,16 @@ class SwingCandidate:
     target_2: float
     holding_period: str
     reason: str
+    cap_segment: str = "Unclassified"
 
 
 class SwingScanner:
-    """Rank liquid NSE stocks using daily trend, momentum and volume."""
+    """Rank NSE stocks using daily trend, momentum and volume."""
 
     def __init__(
         self,
         provider: MarketDataProvider,
-        universe: tuple[str, ...] = NIFTY50_UNIVERSE,
+        universe: tuple[str, ...] = SWING_UNIVERSE,
     ) -> None:
         self.provider = provider
         self.universe = universe
@@ -48,9 +52,11 @@ class SwingScanner:
         timestamp: datetime,
         limit: int = 10,
     ) -> tuple[SwingCandidate, ...]:
+        """Return up to ``limit`` candidates per cap segment."""
         candidates: list[SwingCandidate] = []
         errors: dict[str, str] = {}
         start = timestamp - timedelta(days=420)
+
         for symbol in self.universe:
             try:
                 bars = with_retry(
@@ -78,11 +84,23 @@ class SwingScanner:
             except Exception as error:
                 errors[symbol] = str(error)
 
-        candidates.sort(key=lambda item: item.score, reverse=True)
+        by_segment: dict[str, list[SwingCandidate]] = {}
+        for candidate in candidates:
+            by_segment.setdefault(candidate.cap_segment, []).append(candidate)
+
+        selected: list[SwingCandidate] = []
+        for segment in ("Large Cap", "Mid Cap", "Small Cap"):
+            segment_candidates = sorted(
+                by_segment.get(segment, []),
+                key=lambda item: item.score,
+                reverse=True,
+            )
+            selected.extend(segment_candidates[:limit])
+
         self.last_scan_errors = errors
         self.last_scan_count = len(self.universe)
-        self.last_qualified_count = len(candidates)
-        return tuple(candidates[:limit])
+        self.last_qualified_count = len(selected)
+        return tuple(selected)
 
     @staticmethod
     def _score(symbol: str, bars: list[OHLCVBar]) -> SwingCandidate | None:
@@ -143,4 +161,5 @@ class SwingScanner:
             target_2=target_2,
             holding_period="2–8 weeks",
             reason=", ".join(reasons),
+            cap_segment=SYMBOL_TO_CAP.get(symbol, "Unclassified"),
         )
