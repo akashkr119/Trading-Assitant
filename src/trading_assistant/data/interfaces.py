@@ -19,6 +19,7 @@ class Timeframe(StrEnum):
     FIVE_MINUTES = "5m"
     FIFTEEN_MINUTES = "15m"
     ONE_HOUR = "1h"
+    ONE_DAY = "1d"
 
 
 class OHLCVBar(BaseModel):
