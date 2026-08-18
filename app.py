@@ -14,6 +14,7 @@ from trading_assistant.brokers.facade import BrokerFacade
 from trading_assistant.brokers.factory import build_broker_connection_service
 from trading_assistant.data.market_calendar import IST
 from trading_assistant.data.provider_factory import build_market_data_provider
+from trading_assistant.monitoring.market_scanner import MarketScanner
 from trading_assistant.monitoring.notifier import ConsoleNotifier, NotificationDispatcher
 from trading_assistant.monitoring.signal_dispatch import SignalDispatcher
 from trading_assistant.monitoring.state import MonitorStateMachine
@@ -35,20 +36,22 @@ def build_application() -> TradingAssistantApplication:
 
 app = build_application()
 
-if "monitoring" not in st.session_state:
-    st.session_state.monitoring = False
-if "results" not in st.session_state:
-    st.session_state.results = ()
-if "live_service" not in st.session_state:
-    st.session_state.live_service = None
-if "notifier" not in st.session_state:
-    st.session_state.notifier = ConsoleNotifier(sent=[])
+for key, default in {
+    "monitoring": False,
+    "results": (),
+    "live_service": None,
+    "notifier": ConsoleNotifier(sent=[]),
+    "scanner_candidates": (),
+    "scanner": None,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 
 st.title("📈 Trading Assistant")
 st.caption(
-    "Intraday decision-support for Indian equities — analysis and alerts only; "
-    "this interface never places orders."
+    "Intraday decision-support for Indian equities — the tool scans the market, "
+    "ranks candidates, and lets you choose what to monitor. It never places orders."
 )
 
 
@@ -87,41 +90,40 @@ with st.sidebar:
         value=60,
         format_func=lambda value: f"{value} seconds",
     )
-    st.caption("Use 60 seconds for normal intraday monitoring.")
 
     if st.button("Disconnect broker", use_container_width=True):
         try:
             state = app.disconnect_broker()
             st.session_state.monitoring = False
             st.session_state.live_service = None
+            st.session_state.scanner = None
             st.info(state.message)
         except RuntimeError as error:
             st.warning(str(error))
 
 
 now = datetime.now(IST)
+connected = st.session_state.live_service is not None
+market_open = (
+    st.session_state.live_service.builder.provider.is_market_open()
+    if connected
+    else False
+)
 snapshot = app.dashboard(now)
+symbols = snapshot.watchlist.symbols()
 
 
-# Top status row
 status_col, market_col, watch_col, signal_col = st.columns(4)
 with status_col:
-    connected = st.session_state.live_service is not None
     st.metric("Broker", "Connected" if connected else "Disconnected")
 with market_col:
-    market_open = (
-        st.session_state.live_service.builder.provider.is_market_open()
-        if connected
-        else False
-    )
     st.metric("NSE Market", "OPEN" if market_open else "CLOSED")
 with watch_col:
-    st.metric("Watchlist", len(snapshot.watchlist.symbols()))
+    st.metric("Selected", len(symbols))
 with signal_col:
     st.metric("Active Signals", len(st.session_state.results))
 
 
-# Connection controls
 connect_col, refresh_col = st.columns([3, 1])
 with connect_col:
     if st.button(
@@ -141,6 +143,7 @@ with connect_col:
                     provider,
                     dispatcher,
                 )
+                st.session_state.scanner = MarketScanner(provider)
                 st.success(state.message)
                 st.rerun()
             else:
@@ -153,27 +156,70 @@ with refresh_col:
 
 
 if not connected:
-    st.info(
-        "Connect a broker to start live market analysis. "
-        "The app is read-only and does not place trades."
+    st.info("Connect Groww or Upstox first. The tool will then scan the market for you.")
+else:
+    st.subheader("🔎 Market Scanner")
+    st.write(
+        "You do **not** need to tell the tool which stock to use. "
+        "Scan the liquid NSE universe, review the strongest current setups, "
+        "then choose the stocks you want to monitor."
     )
 
+    scan_col, limit_col = st.columns([3, 1])
+    with scan_col:
+        scan_clicked = st.button(
+            "🔎 Scan market for opportunities",
+            type="primary",
+            use_container_width=True,
+            disabled=not market_open,
+        )
+    with limit_col:
+        scan_limit = st.selectbox("Candidates", [5, 10, 15], index=1)
 
-# Watchlist
-st.subheader("Watchlist")
-watch_col, add_col = st.columns([5, 1])
-with watch_col:
-    symbol = st.text_input(
-        "NSE symbol",
-        placeholder="RELIANCE",
-        label_visibility="collapsed",
-    )
-with add_col:
-    if st.button("Add symbol", use_container_width=True) and symbol.strip():
-        app.add_symbol(symbol.strip().upper(), now.isoformat())
-        st.rerun()
+    if scan_clicked:
+        if not market_open:
+            st.warning("The NSE regular session is closed. Scan again during market hours.")
+        else:
+            scanner: MarketScanner = st.session_state.scanner
+            with st.spinner("Scanning liquid NSE stocks and ranking setups..."):
+                st.session_state.scanner_candidates = scanner.scan(now, limit=scan_limit)
+            st.rerun()
 
-symbols = snapshot.watchlist.symbols()
+    candidates = st.session_state.scanner_candidates
+    if candidates:
+        st.markdown("#### Ranked candidates")
+        rows = [
+            {
+                "Rank": index,
+                "Symbol": item.symbol,
+                "Bias": item.direction,
+                "Score": f"{item.score:.0f}/100",
+                "Price": f"₹{item.price:.2f}",
+                "5m Move": f"{item.change_pct:+.2f}%",
+                "RVOL": f"{item.relative_volume:.2f}x",
+                "Why": item.reason,
+            }
+            for index, item in enumerate(candidates, 1)
+        ]
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+        candidate_symbols = [item.symbol for item in candidates]
+        chosen = st.multiselect(
+            "Choose which candidates to monitor",
+            candidate_symbols,
+            default=[item.symbol for item in candidates[:3]],
+        )
+        if st.button("✅ Add selected candidates to monitoring", type="primary"):
+            for item in chosen:
+                app.add_symbol(item, now.isoformat())
+            st.rerun()
+    elif market_open:
+        st.info("Run the market scanner to get ranked stock suggestions.")
+    else:
+        st.warning("NSE regular session is closed. The scanner is paused.")
+
+
+st.subheader("Selected stocks to monitor")
 if symbols:
     remove_cols = st.columns(min(len(symbols), 5))
     for index, item in enumerate(symbols):
@@ -186,7 +232,7 @@ if symbols:
                 use_container_width=True,
             )
 else:
-    st.warning("Your watchlist is empty. Add NSE symbols above.")
+    st.info("No stocks selected yet. Use the market scanner above.")
 
 
 @st.fragment(run_every=refresh_seconds if st.session_state.monitoring else None)
@@ -200,7 +246,7 @@ def live_panel() -> None:
         return
 
     current_time = datetime.now(IST)
-    with st.spinner("Refreshing market analysis..."):
+    with st.spinner("Running detailed multi-timeframe analysis..."):
         results = service.analyze(symbols, current_time)
     st.session_state.results = results
     app.set_results(results)
@@ -211,10 +257,10 @@ def live_panel() -> None:
                 st.warning(f"{failed_symbol}: {error}")
 
     if not results:
-        st.info("No qualifying setup detected in the selected watchlist.")
+        st.info("No qualifying setup detected in the selected stocks.")
         return
 
-    st.subheader("Live Signals")
+    st.subheader("📢 Live Signals")
     st.caption(f"Last analysis: {current_time.strftime('%H:%M:%S IST')}")
 
     for result in results:
@@ -244,13 +290,11 @@ def live_panel() -> None:
                 if risk is None:
                     st.warning("No valid risk plan for this setup.")
                 else:
-                    entry, stop = risk.entry, risk.stop_loss
-                    target_1, target_2 = risk.target_1, risk.target_2
                     metric_cols = st.columns(4)
-                    metric_cols[0].metric("Entry", f"₹{entry:.2f}")
-                    metric_cols[1].metric("Stop", f"₹{stop:.2f}")
-                    metric_cols[2].metric("Target 1", f"₹{target_1:.2f}")
-                    metric_cols[3].metric("Target 2", f"₹{target_2:.2f}")
+                    metric_cols[0].metric("Entry", f"₹{risk.entry:.2f}")
+                    metric_cols[1].metric("Stop", f"₹{risk.stop_loss:.2f}")
+                    metric_cols[2].metric("Target 1", f"₹{risk.target_1:.2f}")
+                    metric_cols[3].metric("Target 2", f"₹{risk.target_2:.2f}")
                     st.caption(
                         f"R:R to Target 1 = {risk.risk_reward_1:.2f} · "
                         f"Invalidation: {result.explanation.invalidation}"
@@ -268,22 +312,22 @@ if connected and symbols:
     st.session_state.monitoring = st.toggle(
         "Enable live monitoring",
         value=st.session_state.monitoring,
-        help="When enabled, the dashboard rechecks the watchlist automatically.",
+        help="When enabled, the dashboard rechecks the selected stocks automatically.",
     )
 
 live_panel()
 
-
-# Decision-support summary
 st.divider()
-st.subheader("How to use today's test")
-steps = [
-    "Connect Groww and confirm the account connection.",
-    "Add 3–10 liquid NSE stocks to the watchlist.",
-    "Enable live monitoring during the regular NSE session.",
-    "Record every BUY/SELL/WATCH alert with its signal price and time.",
-    "After 5/15/30/60 minutes, compare price movement with the signal direction.",
-    "Do not trade real money until the 2–3 day observation results are reviewed.",
-]
-for number, step in enumerate(steps, 1):
+st.subheader("Today's workflow")
+for number, step in enumerate(
+    (
+        "Connect the broker.",
+        "Scan the market — the tool ranks candidate stocks automatically.",
+        "Review the ranked candidates and select the stocks you want to monitor.",
+        "Run detailed multi-timeframe analysis and receive BUY/SELL/WATCH decisions.",
+        "Record signal outcomes for 5/15/30/60-minute performance validation.",
+        "Do not use real money until the 2–3 day paper-monitoring results are reviewed.",
+    ),
+    1,
+):
     st.write(f"**{number}.** {step}")
