@@ -1,4 +1,4 @@
-"""Upstox authentication and connection verification adapter."""
+"""Upstox authentication and market-data connection adapter."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class UpstoxAuthenticationError(RuntimeError):
 
 @dataclass
 class UpstoxConnector:
-    """Connect to Upstox using a runtime access token and verify the account."""
+    """Verify an Upstox read-only analytics token without trading access."""
 
     access_token: str | None = None
     base_url: str = "https://api.upstox.com/v2"
@@ -29,12 +29,12 @@ class UpstoxConnector:
     broker: BrokerName = BrokerName.UPSTOX
 
     @classmethod
-    def from_environment(cls) -> UpstoxConnector:
+    def from_environment(cls) -> "UpstoxConnector":
         """Build a connector from the runtime Upstox access-token setting."""
         return cls(access_token=os.getenv("UPSTOX_ACCESS_TOKEN"))
 
     def start(self) -> BrokerConnectionState:
-        """Verify the authenticated Upstox account without placing an order."""
+        """Verify access to Upstox market data without placing an order."""
         if not self.access_token or not self.access_token.strip():
             return BrokerConnectionState(
                 self.broker,
@@ -42,7 +42,7 @@ class UpstoxConnector:
                 "Upstox access token is required.",
             )
         try:
-            profile = self._get_profile()
+            market_status = self._get_market_status()
         except UpstoxAuthenticationError as error:
             return BrokerConnectionState(
                 self.broker,
@@ -50,14 +50,11 @@ class UpstoxConnector:
                 str(error),
             )
 
-        user_id = profile.get("user_id")
-        message = "Upstox account connected."
-        if user_id:
-            message = f"Upstox account connected (user {user_id})."
+        status = market_status.get("status", "UNKNOWN")
         return BrokerConnectionState(
             self.broker,
             ConnectionStatus.CONNECTED,
-            message,
+            f"Upstox market data connected (NSE {status}).",
         )
 
     def disconnect(self) -> BrokerConnectionState:
@@ -66,7 +63,7 @@ class UpstoxConnector:
         return BrokerConnectionState(
             self.broker,
             ConnectionStatus.DISCONNECTED,
-            "Upstox account disconnected.",
+            "Upstox market data disconnected.",
         )
 
     def status(self) -> BrokerConnectionState:
@@ -80,12 +77,12 @@ class UpstoxConnector:
         return BrokerConnectionState(
             self.broker,
             ConnectionStatus.DISCONNECTED,
-            "Upstox account is not connected.",
+            "Upstox market data is not connected.",
         )
 
-    def _get_profile(self) -> dict:
+    def _get_market_status(self) -> dict:
         request = Request(
-            f"{self.base_url.rstrip('/')}/user/profile",
+            f"{self.base_url.rstrip('/')}/market/status/NSE",
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.access_token}",
@@ -96,9 +93,11 @@ class UpstoxConnector:
                 payload = json.load(response)
         except Exception as error:
             raise UpstoxAuthenticationError(
-                f"Unable to verify Upstox connection: {error}"
+                f"Unable to verify Upstox market-data access: {error}"
             ) from error
 
         if payload.get("status") != "success":
-            raise UpstoxAuthenticationError("Upstox rejected the credentials.")
+            raise UpstoxAuthenticationError(
+                "Upstox rejected the market-data credentials."
+            )
         return payload.get("data", {})
