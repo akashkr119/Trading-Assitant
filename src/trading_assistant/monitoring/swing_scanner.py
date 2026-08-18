@@ -49,7 +49,7 @@ class SwingScanner:
         timestamp: datetime,
         limit: int = 10,
     ) -> tuple[SwingCandidate, ...]:
-        """Return up to ``limit`` candidates per cap segment for the default universe."""
+        """Return up to ``limit`` candidates per cap segment."""
         candidates: list[SwingCandidate] = []
         errors: dict[str, str] = {}
         start = timestamp - timedelta(days=420)
@@ -82,7 +82,10 @@ class SwingScanner:
                 errors[symbol] = str(error)
 
         candidates.sort(key=lambda item: item.score, reverse=True)
-        categorized = any(item.cap_segment in {"Large Cap", "Mid Cap", "Small Cap"} for item in candidates)
+        categorized_segments = {"Large Cap", "Mid Cap", "Small Cap"}
+        categorized = any(
+            item.cap_segment in categorized_segments for item in candidates
+        )
         if categorized:
             by_segment: dict[str, list[SwingCandidate]] = {}
             for candidate in candidates:
