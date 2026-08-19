@@ -6,6 +6,7 @@ import streamlit as st
 
 from trading_assistant.data.crypto import BinanceMarketDataProvider
 from trading_assistant.monitoring.crypto_scanner import CryptoIntradayScanner
+from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
 
 st.set_page_config(page_title="Crypto Trading", page_icon="🪙", layout="wide")
 st.title("🪙 Crypto Trading")
@@ -18,6 +19,46 @@ scanner = st.session_state.get("crypto_scanner")
 if scanner is None:
     scanner = CryptoIntradayScanner(provider)
     st.session_state.crypto_scanner = scanner
+journal = SignalJournal()
+
+
+def _alert_pnl_percent(direction: str, entry: float, price: float) -> float:
+    """Return direction-aware paper P/L percentage from alert entry to price."""
+    if entry == 0:
+        return 0.0
+    multiplier = 1.0 if direction == "LONG" else -1.0
+    return ((price - entry) / entry) * 100.0 * multiplier
+
+
+def _record_alert(snapshot) -> None:
+    """Record each newly generated BUY/SELL alert once in the paper journal."""
+    if snapshot.alert not in {"BUY ALERT", "SELL ALERT"} or snapshot.candidate is None:
+        return
+    candidate = snapshot.candidate
+    signal_id = (
+        f"crypto-{snapshot.symbol}-{candidate.direction}-"
+        f"{snapshot.timestamp.isoformat()}"
+    )
+    existing_ids = {record.signal_id for record in journal.records()}
+    if signal_id in existing_ids:
+        return
+    journal.record(
+        SignalRecord(
+            signal_id=signal_id,
+            timestamp=snapshot.timestamp.isoformat(),
+            market="CRYPTO",
+            symbol=snapshot.symbol,
+            direction=candidate.direction,
+            score=candidate.score,
+            entry=candidate.entry,
+            stop_loss=candidate.stop_loss,
+            target_1=candidate.target_1,
+            target_2=candidate.target_2,
+            risk_reward=candidate.risk_reward,
+            reason=candidate.reason,
+        )
+    )
+
 
 st.subheader("⚡ Crypto Intraday")
 scan_col, limit_col = st.columns([3, 1])
@@ -36,6 +77,8 @@ if scan_clicked:
         st.session_state.crypto_candidates = scanner.scan(now, limit=scan_limit)
 
 candidates = st.session_state.get("crypto_candidates", ())
+selected_symbol = None
+snapshot = None
 if candidates:
     st.markdown("### 🔥 Best Crypto Intraday Opportunities")
     rows = [
@@ -66,8 +109,12 @@ if candidates:
         "🔄 Refresh selected coin analysis",
         use_container_width=True,
     )
-    snapshot = st.session_state.get("crypto_selected_snapshot")
-    if detail_clicked or snapshot is None or snapshot.symbol != selected_symbol:
+    cached_snapshot = st.session_state.get("crypto_selected_snapshot")
+    if (
+        detail_clicked
+        or cached_snapshot is None
+        or cached_snapshot.symbol != selected_symbol
+    ):
         try:
             with st.spinner(f"Loading detailed {selected_symbol} analysis..."):
                 snapshot = scanner.analyze_symbol(
@@ -75,10 +122,12 @@ if candidates:
                     datetime.now(timezone.utc),
                 )
                 st.session_state.crypto_selected_snapshot = snapshot
+                _record_alert(snapshot)
         except Exception as error:
             st.error(f"Unable to load {selected_symbol}: {error}")
-            snapshot = None
             st.session_state.pop("crypto_selected_snapshot", None)
+    else:
+        snapshot = cached_snapshot
 
     if snapshot is not None and snapshot.symbol == selected_symbol:
         st.markdown(f"### 📈 {snapshot.symbol} Detailed Analysis")
@@ -108,9 +157,9 @@ if candidates:
 
         st.markdown("#### 🚨 Trading Alert")
         if snapshot.alert == "BUY ALERT":
-            st.success(f"🟢 BUY ALERT — {snapshot.symbol}")
+            st.success(f"🟢 BUY ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
         elif snapshot.alert == "SELL ALERT":
-            st.error(f"🔴 SELL ALERT — {snapshot.symbol}")
+            st.error(f"🔴 SELL ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
         else:
             st.warning(f"🟡 WATCH — {snapshot.symbol}")
         st.write(snapshot.alert_reason)
@@ -118,13 +167,57 @@ if candidates:
         if snapshot.candidate is not None:
             plan = snapshot.candidate
             plan_cols = st.columns(5)
-            plan_cols[0].metric("Entry", f"{plan.entry:.8g}")
+            plan_cols[0].metric("Alert Price", f"{plan.entry:.8g}")
             plan_cols[1].metric("Stop Loss", f"{plan.stop_loss:.8g}")
             plan_cols[2].metric("Target 1", f"{plan.target_1:.8g}")
             plan_cols[3].metric("Target 2", f"{plan.target_2:.8g}")
             plan_cols[4].metric("Risk : Reward", f"1:{plan.risk_reward:.0f}")
+
+            current_pnl = _alert_pnl_percent(plan.direction, plan.entry, snapshot.price)
+            pnl_label = "Profit" if current_pnl >= 0 else "Loss"
+            st.metric(
+                f"Current {pnl_label} from Alert",
+                f"{current_pnl:+.2f}%",
+                help=(
+                    "Paper mark-to-market percentage from the alert price to the current price. "
+                    "For SELL alerts, a falling price is a profit."
+                ),
+            )
 else:
     st.info("Run the crypto scanner to get automatically ranked opportunities.")
+
+st.markdown("### 📒 BUY / SELL Alert History")
+alert_records = journal.records()
+if alert_records:
+    history_rows = []
+    for record in reversed(alert_records):
+        live_price = snapshot.price if snapshot is not None and record.symbol == snapshot.symbol else None
+        comparison_price = live_price if live_price is not None else record.exit_price
+        pnl = (
+            _alert_pnl_percent(record.direction, record.entry, comparison_price)
+            if comparison_price is not None
+            else None
+        )
+        history_rows.append(
+            {
+                "Time": record.timestamp,
+                "Coin": record.symbol,
+                "Alert": "BUY" if record.direction == "LONG" else "SELL",
+                "Alert Price": f"{record.entry:.8g}",
+                "Current/Exit Price": (
+                    f"{comparison_price:.8g}" if comparison_price is not None else "—"
+                ),
+                "Profit/Loss": f"{pnl:+.2f}%" if pnl is not None else "OPEN",
+                "Status": record.status,
+                "Stop": f"{record.stop_loss:.8g}",
+                "Target 1": f"{record.target_1:.8g}",
+                "Target 2": f"{record.target_2:.8g}",
+                "Score": f"{record.score:.0f}/100",
+            }
+        )
+    st.dataframe(history_rows, use_container_width=True, hide_index=True)
+else:
+    st.info("No BUY/SELL alerts have been recorded yet. Alerts are recorded automatically.")
 
 if scanner.last_scan_count:
     with st.expander("🔧 Crypto scan diagnostics"):
