@@ -7,7 +7,6 @@ import streamlit as st
 from trading_assistant.data.crypto import BinanceMarketDataProvider
 from trading_assistant.monitoring.crypto_scanner import CryptoIntradayScanner
 
-
 st.set_page_config(page_title="Crypto Trading", page_icon="🪙", layout="wide")
 st.title("🪙 Crypto Trading")
 st.caption(
