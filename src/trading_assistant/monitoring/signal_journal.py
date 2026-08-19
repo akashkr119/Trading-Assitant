@@ -10,7 +10,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class SignalRecord:
-    """Immutable signal snapshot captured when an alert is generated."""
+    """Immutable alert plan plus live paper-trading outcome state."""
 
     signal_id: str
     timestamp: str
@@ -28,6 +28,10 @@ class SignalRecord:
     exit_price: float | None = None
     outcome_r: float | None = None
     resolved_at: str | None = None
+    target_1_achieved: bool = False
+    target_2_achieved: bool = False
+    stop_loss_hit: bool = False
+    sell_price: float | None = None
 
 
 @dataclass(frozen=True)
@@ -49,7 +53,7 @@ class JournalSummary:
 
 
 class SignalJournal:
-    """Store signal snapshots and evaluate their paper-trading outcomes."""
+    """Store alert plans and their live paper-trading outcome state."""
 
     FIELDS = tuple(SignalRecord.__dataclass_fields__)
 
@@ -57,8 +61,9 @@ class SignalJournal:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
-            with self.path.open("w", newline="", encoding="utf-8") as handle:
-                csv.DictWriter(handle, fieldnames=self.FIELDS).writeheader()
+            self._rewrite([])
+        else:
+            self._migrate_schema()
 
     def record(self, signal: SignalRecord) -> None:
         """Append a signal without overwriting historical records."""
@@ -71,6 +76,41 @@ class SignalJournal:
         with self.path.open("r", newline="", encoding="utf-8") as handle:
             return [self._from_row(row) for row in csv.DictReader(handle)]
 
+    def update_live_state(
+        self,
+        signal_id: str,
+        current_price: float,
+        target_1_achieved: bool,
+        target_2_achieved: bool,
+        stop_loss_hit: bool,
+    ) -> bool:
+        """Update live target/stop state and the paper sell price."""
+        records = self.records()
+        updated = False
+        replacement: list[SignalRecord] = []
+        for record in records:
+            if record.signal_id != signal_id or record.status != "OPEN":
+                replacement.append(record)
+                continue
+            hit_target = target_2_achieved or target_1_achieved
+            hit_stop = stop_loss_hit
+            sell_price = current_price if hit_target or hit_stop else record.sell_price
+            replacement.append(
+                SignalRecord(
+                    **{
+                        **asdict(record),
+                        "target_1_achieved": record.target_1_achieved or target_1_achieved,
+                        "target_2_achieved": record.target_2_achieved or target_2_achieved,
+                        "stop_loss_hit": record.stop_loss_hit or stop_loss_hit,
+                        "sell_price": sell_price,
+                    }
+                )
+            )
+            updated = True
+        if updated:
+            self._rewrite(replacement)
+        return updated
+
     def resolve(
         self,
         signal_id: str,
@@ -79,7 +119,7 @@ class SignalJournal:
         outcome_r: float,
         resolved_at: datetime,
     ) -> bool:
-        """Resolve a signal while preserving its original entry and risk plan."""
+        """Close a signal while preserving its original risk plan."""
         records = self.records()
         updated = False
         replacement: list[SignalRecord] = []
@@ -93,6 +133,7 @@ class SignalJournal:
                         **asdict(record),
                         "status": status,
                         "exit_price": exit_price,
+                        "sell_price": exit_price,
                         "outcome_r": outcome_r,
                         "resolved_at": resolved_at.isoformat(),
                     }
@@ -108,8 +149,8 @@ class SignalJournal:
         closed = [r for r in records if r.status != "OPEN" and r.outcome_r is not None]
         wins = [r for r in closed if r.outcome_r is not None and r.outcome_r > 0]
         losses = [r for r in closed if r.outcome_r is not None and r.outcome_r < 0]
-        target_1 = [r for r in closed if r.status in {"TARGET_1", "TARGET_2"}]
-        target_2 = [r for r in closed if r.status == "TARGET_2"]
+        target_1 = [r for r in closed if r.target_1_achieved]
+        target_2 = [r for r in closed if r.target_2_achieved]
         values = [float(r.outcome_r) for r in closed]
         average_r = sum(values) / len(values) if values else 0.0
         gross_profit = sum(v for v in values if v > 0)
@@ -126,13 +167,21 @@ class SignalJournal:
             losses=len(losses),
             invalidated=sum(r.status == "INVALIDATED" for r in closed),
             win_rate=(len(wins) / len(closed) * 100) if closed else 0.0,
-            target_1_rate=(len(target_1) / len(closed) * 100) if closed else 0.0,
-            target_2_rate=(len(target_2) / len(closed) * 100) if closed else 0.0,
+            target_1_rate=(len(target_1) / len(records) * 100) if records else 0.0,
+            target_2_rate=(len(target_2) / len(records) * 100) if records else 0.0,
             average_r=average_r,
             expectancy_r=average_r,
             profit_factor=(gross_profit / gross_loss) if gross_loss else 0.0,
             max_drawdown_r=drawdown,
         )
+
+    def _migrate_schema(self) -> None:
+        with self.path.open("r", newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            if tuple(reader.fieldnames or ()) == self.FIELDS:
+                return
+            records = [self._from_row(row) for row in reader]
+        self._rewrite(records)
 
     def _rewrite(self, records: list[SignalRecord]) -> None:
         with self.path.open("w", newline="", encoding="utf-8") as handle:
@@ -142,8 +191,11 @@ class SignalJournal:
 
     @staticmethod
     def _from_row(row: dict[str, str]) -> SignalRecord:
-        def optional_float(value: str) -> float | None:
+        def optional_float(value: str | None) -> float | None:
             return float(value) if value else None
+
+        def optional_bool(value: str | None) -> bool:
+            return str(value).lower() == "true"
 
         return SignalRecord(
             signal_id=row["signal_id"],
@@ -158,8 +210,12 @@ class SignalJournal:
             target_2=float(row["target_2"]),
             risk_reward=float(row["risk_reward"]),
             reason=row["reason"],
-            status=row["status"],
-            exit_price=optional_float(row["exit_price"]),
-            outcome_r=optional_float(row["outcome_r"]),
-            resolved_at=row["resolved_at"] or None,
+            status=row.get("status") or "OPEN",
+            exit_price=optional_float(row.get("exit_price")),
+            outcome_r=optional_float(row.get("outcome_r")),
+            resolved_at=row.get("resolved_at") or None,
+            target_1_achieved=optional_bool(row.get("target_1_achieved")),
+            target_2_achieved=optional_bool(row.get("target_2_achieved")),
+            stop_loss_hit=optional_bool(row.get("stop_loss_hit")),
+            sell_price=optional_float(row.get("sell_price")),
         )
