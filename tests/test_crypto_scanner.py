@@ -26,13 +26,15 @@ def _bars(count: int) -> list[OHLCVBar]:
     bars: list[OHLCVBar] = []
     price = 100.0
     for index in range(count):
-        close = price + 0.5
+        close = price + (0.7 if index % 4 else 0.35)
+        high = max(price, close) + 0.25
+        low = min(price, close) - 0.25
         bars.append(
             OHLCVBar(
                 timestamp=start + timedelta(minutes=5 * index),
                 open=price,
-                high=close + 0.2,
-                low=price - 0.2,
+                high=high,
+                low=low,
                 close=close,
                 volume=1000,
             )
@@ -43,34 +45,28 @@ def _bars(count: int) -> list[OHLCVBar]:
 
 def test_crypto_scanner_sets_four_to_one_reward_risk(monkeypatch) -> None:
     bars = _bars(120)
-    index = pd.RangeIndex(len(bars))
+    series = pd.Series([100.0] * 120)
 
-    monkeypatch.setattr(
-        crypto_scanner,
-        "ema",
-        lambda series, period: pd.Series(
-            101.0 if period == 9 else 100.0, index=index
-        ),
-    )
+    monkeypatch.setattr(crypto_scanner, "ema", lambda values, period: series)
     monkeypatch.setattr(
         crypto_scanner,
         "rsi",
-        lambda series, period: pd.Series(60.0, index=index),
+        lambda values, period: pd.Series([60.0] * len(values)),
     )
     monkeypatch.setattr(
         crypto_scanner,
         "macd",
-        lambda series: pd.DataFrame({"histogram": pd.Series(1.0, index=index)}),
+        lambda values: pd.DataFrame({"histogram": [1.0] * len(values)}),
     )
     monkeypatch.setattr(
         crypto_scanner,
         "relative_volume",
-        lambda frame: pd.Series(1.5, index=frame.index),
+        lambda frame: pd.Series([1.5] * len(frame)),
     )
     monkeypatch.setattr(
         crypto_scanner,
         "supertrend",
-        lambda frame: pd.DataFrame({"direction": pd.Series(1.0, index=frame.index)}),
+        lambda frame: pd.DataFrame({"direction": [1.0] * len(frame)}),
     )
 
     scanner = CryptoIntradayScanner(
