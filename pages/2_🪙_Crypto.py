@@ -31,17 +31,23 @@ def _alert_pnl_percent(direction: str, entry: float, price: float) -> float:
 
 
 def _record_alert(snapshot) -> None:
-    """Record each newly generated BUY/SELL alert once in the paper journal."""
+    """Record one active BUY/SELL alert without duplicate polling entries."""
     if snapshot.alert not in {"BUY ALERT", "SELL ALERT"} or snapshot.candidate is None:
         return
     candidate = snapshot.candidate
+    existing = journal.records()
+    already_open = any(
+        record.symbol == snapshot.symbol
+        and record.direction == candidate.direction
+        and record.status == "OPEN"
+        for record in existing
+    )
+    if already_open:
+        return
     signal_id = (
         f"crypto-{snapshot.symbol}-{candidate.direction}-"
         f"{snapshot.timestamp.isoformat()}"
     )
-    existing_ids = {record.signal_id for record in journal.records()}
-    if signal_id in existing_ids:
-        return
     journal.record(
         SignalRecord(
             signal_id=signal_id,
@@ -58,6 +64,78 @@ def _record_alert(snapshot) -> None:
             reason=candidate.reason,
         )
     )
+
+
+def _render_live_selected_coin(selected_symbol: str) -> None:
+    """Refresh selected-coin market data and alerts automatically."""
+    try:
+        with st.spinner(f"Loading live {selected_symbol} market data..."):
+            snapshot = scanner.analyze_symbol(
+                selected_symbol,
+                datetime.now(timezone.utc),
+            )
+        _record_alert(snapshot)
+    except Exception as error:
+        st.error(f"Unable to load live {selected_symbol}: {error}")
+        return
+
+    st.markdown(f"### 📈 {snapshot.symbol} Live Analysis")
+    st.caption(
+        f"Live snapshot: {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')} · "
+        "updates automatically every 5 seconds"
+    )
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Current Price", f"{snapshot.price:.8g}")
+    metric_cols[1].metric("EMA 9", f"{snapshot.ema9:.8g}")
+    metric_cols[2].metric("EMA 20", f"{snapshot.ema20:.8g}")
+    metric_cols[3].metric("RSI", f"{snapshot.rsi:.1f}")
+    metric_cols[4].metric("MACD Hist", f"{snapshot.macd_histogram:.6g}")
+    metric_cols[5].metric("RVOL", f"{snapshot.relative_volume:.2f}x")
+
+    level_cols = st.columns(2)
+    with level_cols[0]:
+        st.markdown("#### 🟢 Support Levels")
+        if snapshot.support_levels:
+            for index, level in enumerate(snapshot.support_levels, 1):
+                st.write(f"S{index}: **{level:.8g}**")
+        else:
+            st.info("No confirmed support level below current price.")
+    with level_cols[1]:
+        st.markdown("#### 🔴 Resistance Levels")
+        if snapshot.resistance_levels:
+            for index, level in enumerate(snapshot.resistance_levels, 1):
+                st.write(f"R{index}: **{level:.8g}**")
+        else:
+            st.info("No confirmed resistance level above current price.")
+
+    st.markdown("#### 🚨 Live Trading Alert")
+    if snapshot.alert == "BUY ALERT":
+        st.success(f"🟢 LIVE BUY ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
+    elif snapshot.alert == "SELL ALERT":
+        st.error(f"🔴 LIVE SELL ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
+    else:
+        st.warning(f"🟡 LIVE WATCH — {snapshot.symbol}")
+    st.write(snapshot.alert_reason)
+
+    if snapshot.candidate is not None:
+        plan = snapshot.candidate
+        plan_cols = st.columns(5)
+        plan_cols[0].metric("Alert Price", f"{plan.entry:.8g}")
+        plan_cols[1].metric("Stop Loss", f"{plan.stop_loss:.8g}")
+        plan_cols[2].metric("Target 1", f"{plan.target_1:.8g}")
+        plan_cols[3].metric("Target 2", f"{plan.target_2:.8g}")
+        plan_cols[4].metric("Risk : Reward", f"1:{plan.risk_reward:.0f}")
+
+        current_pnl = _alert_pnl_percent(plan.direction, plan.entry, snapshot.price)
+        pnl_label = "Profit" if current_pnl >= 0 else "Loss"
+        st.metric(
+            f"Current {pnl_label} from Alert",
+            f"{current_pnl:+.2f}%",
+            help=(
+                "Paper mark-to-market percentage from the alert price to the current price. "
+                "For SELL alerts, a falling price is a profit."
+            ),
+        )
 
 
 st.subheader("⚡ Crypto Intraday")
@@ -77,8 +155,6 @@ if scan_clicked:
         st.session_state.crypto_candidates = scanner.scan(now, limit=scan_limit)
 
 candidates = st.session_state.get("crypto_candidates", ())
-selected_symbol = None
-snapshot = None
 if candidates:
     st.markdown("### 🔥 Best Crypto Intraday Opportunities")
     rows = [
@@ -105,84 +181,13 @@ if candidates:
         [item.symbol for item in candidates],
         key="crypto_selected_symbol",
     )
-    detail_clicked = st.button(
-        "🔄 Refresh selected coin analysis",
-        use_container_width=True,
-    )
-    cached_snapshot = st.session_state.get("crypto_selected_snapshot")
-    if (
-        detail_clicked
-        or cached_snapshot is None
-        or cached_snapshot.symbol != selected_symbol
-    ):
-        try:
-            with st.spinner(f"Loading detailed {selected_symbol} analysis..."):
-                snapshot = scanner.analyze_symbol(
-                    selected_symbol,
-                    datetime.now(timezone.utc),
-                )
-                st.session_state.crypto_selected_snapshot = snapshot
-                _record_alert(snapshot)
-        except Exception as error:
-            st.error(f"Unable to load {selected_symbol}: {error}")
-            st.session_state.pop("crypto_selected_snapshot", None)
-    else:
-        snapshot = cached_snapshot
+    st.caption("The selected coin is monitored live; no manual refresh is required.")
 
-    if snapshot is not None and snapshot.symbol == selected_symbol:
-        st.markdown(f"### 📈 {snapshot.symbol} Detailed Analysis")
-        metric_cols = st.columns(6)
-        metric_cols[0].metric("Current Price", f"{snapshot.price:.8g}")
-        metric_cols[1].metric("EMA 9", f"{snapshot.ema9:.8g}")
-        metric_cols[2].metric("EMA 20", f"{snapshot.ema20:.8g}")
-        metric_cols[3].metric("RSI", f"{snapshot.rsi:.1f}")
-        metric_cols[4].metric("MACD Hist", f"{snapshot.macd_histogram:.6g}")
-        metric_cols[5].metric("RVOL", f"{snapshot.relative_volume:.2f}x")
+    @st.fragment(run_every="5s")
+    def live_selected_coin() -> None:
+        _render_live_selected_coin(selected_symbol)
 
-        level_cols = st.columns(2)
-        with level_cols[0]:
-            st.markdown("#### 🟢 Support Levels")
-            if snapshot.support_levels:
-                for index, level in enumerate(snapshot.support_levels, 1):
-                    st.write(f"S{index}: **{level:.8g}**")
-            else:
-                st.info("No confirmed support level below current price.")
-        with level_cols[1]:
-            st.markdown("#### 🔴 Resistance Levels")
-            if snapshot.resistance_levels:
-                for index, level in enumerate(snapshot.resistance_levels, 1):
-                    st.write(f"R{index}: **{level:.8g}**")
-            else:
-                st.info("No confirmed resistance level above current price.")
-
-        st.markdown("#### 🚨 Trading Alert")
-        if snapshot.alert == "BUY ALERT":
-            st.success(f"🟢 BUY ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
-        elif snapshot.alert == "SELL ALERT":
-            st.error(f"🔴 SELL ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
-        else:
-            st.warning(f"🟡 WATCH — {snapshot.symbol}")
-        st.write(snapshot.alert_reason)
-
-        if snapshot.candidate is not None:
-            plan = snapshot.candidate
-            plan_cols = st.columns(5)
-            plan_cols[0].metric("Alert Price", f"{plan.entry:.8g}")
-            plan_cols[1].metric("Stop Loss", f"{plan.stop_loss:.8g}")
-            plan_cols[2].metric("Target 1", f"{plan.target_1:.8g}")
-            plan_cols[3].metric("Target 2", f"{plan.target_2:.8g}")
-            plan_cols[4].metric("Risk : Reward", f"1:{plan.risk_reward:.0f}")
-
-            current_pnl = _alert_pnl_percent(plan.direction, plan.entry, snapshot.price)
-            pnl_label = "Profit" if current_pnl >= 0 else "Loss"
-            st.metric(
-                f"Current {pnl_label} from Alert",
-                f"{current_pnl:+.2f}%",
-                help=(
-                    "Paper mark-to-market percentage from the alert price to the current price. "
-                    "For SELL alerts, a falling price is a profit."
-                ),
-            )
+    live_selected_coin()
 else:
     st.info("Run the crypto scanner to get automatically ranked opportunities.")
 
@@ -191,26 +196,21 @@ alert_records = journal.records()
 if alert_records:
     history_rows = []
     for record in reversed(alert_records):
-        live_price = None
-        if snapshot is not None and record.symbol == snapshot.symbol:
-            live_price = snapshot.price
-        comparison_price = live_price if live_price is not None else record.exit_price
-        pnl = (
-            _alert_pnl_percent(record.direction, record.entry, comparison_price)
-            if comparison_price is not None
-            else None
-        )
         history_rows.append(
             {
                 "Time": record.timestamp,
                 "Coin": record.symbol,
                 "Alert": "BUY" if record.direction == "LONG" else "SELL",
                 "Alert Price": f"{record.entry:.8g}",
-                "Current/Exit Price": (
-                    f"{comparison_price:.8g}" if comparison_price is not None else "—"
+                "Exit Price": (
+                    f"{record.exit_price:.8g}" if record.exit_price is not None else "OPEN"
                 ),
-                "Profit/Loss": f"{pnl:+.2f}%" if pnl is not None else "OPEN",
-                "Status": record.status,
+                "Result": record.status,
+                "P/L (R)": (
+                    f"{record.outcome_r:+.2f}R"
+                    if record.outcome_r is not None
+                    else "OPEN"
+                ),
                 "Stop": f"{record.stop_loss:.8g}",
                 "Target 1": f"{record.target_1:.8g}",
                 "Target 2": f"{record.target_2:.8g}",
@@ -239,6 +239,6 @@ st.info(
 )
 
 st.caption(
-    "Risk/reward shown by the scanner is a planned 1:4 structure, not a guarantee that the "
-    "market will reach the target. Validate signals with paper monitoring before real-money use."
+    "Live alerts are decision-support signals, not guaranteed trade outcomes. "
+    "Validate signals with paper monitoring before real-money use."
 )
