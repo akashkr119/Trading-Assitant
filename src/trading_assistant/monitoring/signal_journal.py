@@ -79,12 +79,12 @@ class SignalJournal:
     def update_live_state(
         self,
         signal_id: str,
-        current_price: float,
         target_1_achieved: bool,
         target_2_achieved: bool,
         stop_loss_hit: bool,
+        sell_price: float | None,
     ) -> bool:
-        """Update live target/stop state and the paper sell price."""
+        """Update live target/stop state and the planned paper sell price."""
         records = self.records()
         updated = False
         replacement: list[SignalRecord] = []
@@ -92,9 +92,6 @@ class SignalJournal:
             if record.signal_id != signal_id or record.status != "OPEN":
                 replacement.append(record)
                 continue
-            hit_target = target_2_achieved or target_1_achieved
-            hit_stop = stop_loss_hit
-            sell_price = current_price if hit_target or hit_stop else record.sell_price
             replacement.append(
                 SignalRecord(
                     **{
@@ -102,7 +99,7 @@ class SignalJournal:
                         "target_1_achieved": record.target_1_achieved or target_1_achieved,
                         "target_2_achieved": record.target_2_achieved or target_2_achieved,
                         "stop_loss_hit": record.stop_loss_hit or stop_loss_hit,
-                        "sell_price": sell_price,
+                        "sell_price": sell_price or record.sell_price,
                     }
                 )
             )
@@ -149,8 +146,8 @@ class SignalJournal:
         closed = [r for r in records if r.status != "OPEN" and r.outcome_r is not None]
         wins = [r for r in closed if r.outcome_r is not None and r.outcome_r > 0]
         losses = [r for r in closed if r.outcome_r is not None and r.outcome_r < 0]
-        target_1 = [r for r in closed if r.target_1_achieved]
-        target_2 = [r for r in closed if r.target_2_achieved]
+        target_1 = [r for r in records if r.target_1_achieved]
+        target_2 = [r for r in records if r.target_2_achieved]
         values = [float(r.outcome_r) for r in closed]
         average_r = sum(values) / len(values) if values else 0.0
         gross_profit = sum(v for v in values if v > 0)
