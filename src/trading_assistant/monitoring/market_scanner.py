@@ -17,57 +17,15 @@ from trading_assistant.indicators import ema, macd, relative_volume, rsi
 # A stable liquid universe for V1. The universe is deliberately limited so a
 # broker's historical-data quota is not exhausted during intraday scanning.
 NIFTY50_UNIVERSE = (
-    "ADANIENT",
-    "ADANIPORTS",
-    "APOLLOHOSP",
-    "ASIANPAINT",
-    "AXISBANK",
-    "BAJAJ-AUTO",
-    "BAJFINANCE",
-    "BAJAJFINSV",
-    "BEL",
-    "BHARTIARTL",
-    "CIPLA",
-    "COALINDIA",
-    "DRREDDY",
-    "EICHERMOT",
-    "ETERNAL",
-    "GRASIM",
-    "HCLTECH",
-    "HDFCBANK",
-    "HDFCLIFE",
-    "HEROMOTOCO",
-    "HINDALCO",
-    "HINDUNILVR",
-    "ICICIBANK",
-    "INDUSINDBK",
-    "INFY",
-    "ITC",
-    "JIOFIN",
-    "JSWSTEEL",
-    "KOTAKBANK",
-    "LT",
-    "M&M",
-    "MARUTI",
-    "MAXHEALTH",
-    "NESTLEIND",
-    "NTPC",
-    "ONGC",
-    "POWERGRID",
-    "RELIANCE",
-    "SBILIFE",
-    "SBIN",
-    "SHRIRAMFIN",
-    "SUNPHARMA",
-    "TATACONSUM",
-    "TATAMOTORS",
-    "TATASTEEL",
-    "TCS",
-    "TECHM",
-    "TITAN",
-    "TRENT",
-    "ULTRACEMCO",
-    "WIPRO",
+    "ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK",
+    "BAJAJ-AUTO", "BAJFINANCE", "BAJAJFINSV", "BEL", "BHARTIARTL",
+    "CIPLA", "COALINDIA", "DRREDDY", "EICHERMOT", "ETERNAL", "GRASIM",
+    "HCLTECH", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", "HINDALCO",
+    "HINDUNILVR", "ICICIBANK", "INDUSINDBK", "INFY", "ITC", "JIOFIN",
+    "JSWSTEEL", "KOTAKBANK", "LT", "M&M", "MARUTI", "MAXHEALTH",
+    "NESTLEIND", "NTPC", "ONGC", "POWERGRID", "RELIANCE", "SBILIFE",
+    "SBIN", "SHRIRAMFIN", "SUNPHARMA", "TATACONSUM", "TATAMOTORS",
+    "TATASTEEL", "TCS", "TECHM", "TITAN", "TRENT", "ULTRACEMCO", "WIPRO",
 )
 
 
@@ -94,14 +52,27 @@ class MarketScanner:
     ) -> None:
         self.provider = provider
         self.universe = universe
+        self.last_scan_errors: dict[str, str] = {}
+        self.last_scan_count = 0
+        self.last_data_count = 0
+        self.last_qualified_count = 0
 
     def scan(
         self,
         timestamp: datetime,
         limit: int = 10,
     ) -> tuple[ScanCandidate, ...]:
+        """Rank candidates using enough history to work from market open onward."""
         candidates: list[ScanCandidate] = []
-        start = timestamp - timedelta(minutes=5 * 80)
+        errors: dict[str, str] = {}
+        self.last_scan_count = len(self.universe)
+        self.last_data_count = 0
+        self.last_qualified_count = 0
+
+        # Do not request only today's candles. At 9:15 there are no 30 five-minute
+        # candles yet. A multi-day lookback gives indicators enough history while
+        # still keeping the request small enough for an intraday scan.
+        start = timestamp - timedelta(days=7)
         for symbol in self.universe:
             try:
                 bars = with_retry(
@@ -115,15 +86,18 @@ class MarketScanner:
                     sleeper=lambda _: None,
                 )
                 if len(bars) < 30:
+                    errors[symbol] = f"Only {len(bars)} five-minute candles returned"
                     continue
+                self.last_data_count += 1
                 candidate = self._score(symbol, list(bars))
                 if candidate is not None:
                     candidates.append(candidate)
-            except Exception:
-                # One unavailable symbol must not prevent the market scan.
-                continue
+            except Exception as error:
+                errors[symbol] = str(error)
 
         candidates.sort(key=lambda item: item.score, reverse=True)
+        self.last_scan_errors = errors
+        self.last_qualified_count = len(candidates)
         return tuple(candidates[:limit])
 
     @staticmethod
