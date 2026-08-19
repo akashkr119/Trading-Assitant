@@ -143,9 +143,9 @@ class SignalJournal:
 
     def summary(self) -> JournalSummary:
         records = self.records()
-        closed = [r for r in records if r.status != "OPEN" and r.outcome_r is not None]
-        wins = [r for r in closed if r.outcome_r is not None and r.outcome_r > 0]
-        losses = [r for r in closed if r.outcome_r is not None and r.outcome_r < 0]
+        closed = [r for r in records if r.outcome_r is not None]
+        wins = [r for r in closed if r.outcome_r > 0]
+        losses = [r for r in closed if r.outcome_r < 0]
         target_1 = [r for r in records if r.target_1_achieved]
         target_2 = [r for r in records if r.target_2_achieved]
         values = [float(r.outcome_r) for r in closed]
