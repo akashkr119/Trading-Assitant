@@ -192,6 +192,7 @@ else:
         st.rerun()
 
     candidates = st.session_state.scanner_candidates
+    scanner = st.session_state.scanner
     if candidates:
         st.markdown("#### Ranked intraday candidates")
         rows = [
@@ -221,9 +222,21 @@ else:
             st.rerun()
     elif market_open:
         st.info("Run the intraday scanner to get ranked stock suggestions.")
-    else:
-        st.warning("NSE regular session is closed. Intraday scanner is paused.")
 
+    if scanner is not None and scanner.last_scan_count:
+        with st.expander("🔧 Intraday scan diagnostics"):
+            diag_cols = st.columns(4)
+            diag_cols[0].metric("Stocks scanned", scanner.last_scan_count)
+            diag_cols[1].metric("Data received", scanner.last_data_count)
+            diag_cols[2].metric("Qualified", scanner.last_qualified_count)
+            diag_cols[3].metric("Data errors", len(scanner.last_scan_errors))
+            if scanner.last_scan_errors:
+                st.caption("The first 20 data errors are shown below.")
+                for failed_symbol, error in list(scanner.last_scan_errors.items())[:20]:
+                    st.warning(f"{failed_symbol}: {error}")
+
+    if not candidates and not market_open:
+        st.warning("NSE regular session is closed. Intraday scanner is paused.")
 
     st.divider()
     st.subheader("📅 Swing Trading Scanner")
@@ -415,34 +428,22 @@ def live_panel() -> None:
     if st.session_state.notifier.sent:
         st.subheader("Latest Alerts")
         for alert in st.session_state.notifier.sent[-5:][::-1]:
-            st.info(f"{alert.symbol}: {alert.alert_type.value} — {alert.message}")
+            st.info(f"{alert.sent_at.strftime('%H:%M:%S')} — {alert.message}")
 
-
-if connected and symbols:
-    st.session_state.monitoring = st.toggle(
-        "Enable live intraday monitoring",
-        value=st.session_state.monitoring,
-        help=(
-            "When enabled, the dashboard rechecks selected stocks automatically "
-            "during market hours."
-        ),
-    )
 
 live_panel()
 
 st.divider()
-st.subheader("Today's workflow")
-for number, step in enumerate(
-    (
-        "Connect the broker.",
-        "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
-        "Let the tool rank stocks from the liquid NSE universe "
-        "instead of entering a stock manually.",
-        "Review the shortlist and choose the stocks you want to monitor.",
-        "Use detailed intraday analysis for same-day trades; "
-        "use the daily swing setup for multi-day ideas.",
-        "Record signal outcomes before considering real-money trading.",
-    ),
-    1,
-):
-    st.write(f"**{number}.** {step}")
+st.subheader("How to use this tool")
+steps = (
+    "Connect the broker.",
+    "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
+    "Let the tool rank stocks from the liquid NSE universe "
+    "instead of entering a stock manually.",
+    "Review the shortlist and choose the stocks you want to monitor.",
+    "Use detailed intraday analysis for same-day trades; "
+    "use the daily swing setup for multi-day ideas.",
+    "Record signal outcomes before considering real-money trading.",
+)
+for index, step in enumerate(steps, 1):
+    st.write(f"{index}. {step}")
