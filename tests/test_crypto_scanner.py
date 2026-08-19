@@ -23,12 +23,12 @@ def _bars(count: int) -> list[OHLCVBar]:
     bars: list[OHLCVBar] = []
     price = 100.0
     for index in range(count):
-        if index < 25:
+        if index < 30:
             close = price + 0.05
         else:
             close = price + (0.7 if index % 4 else 0.35)
-        high = max(price, close) + 0.6
-        low = min(price, close) - 0.4
+        high = max(price, close) + 0.25
+        low = min(price, close) - 0.25
         bars.append(
             OHLCVBar(
                 timestamp=start + timedelta(minutes=5 * index),
@@ -36,7 +36,7 @@ def _bars(count: int) -> list[OHLCVBar]:
                 high=high,
                 low=low,
                 close=close,
-                volume=1000 + index * 20,
+                volume=1000,
             )
         )
         price = close
