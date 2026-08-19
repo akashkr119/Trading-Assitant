@@ -55,6 +55,72 @@ if candidates:
         for index, item in enumerate(candidates, 1)
     ]
     st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.markdown("### 🎯 Select a Coin to Trade")
+    selected_symbol = st.selectbox(
+        "Select one of the scanned opportunities",
+        [item.symbol for item in candidates],
+        key="crypto_selected_symbol",
+    )
+    detail_clicked = st.button(
+        "🔄 Refresh selected coin analysis",
+        use_container_width=True,
+    )
+    if detail_clicked or "crypto_selected_snapshot" not in st.session_state:
+        try:
+            with st.spinner(f"Loading detailed {selected_symbol} analysis..."):
+                st.session_state.crypto_selected_snapshot = scanner.analyze_symbol(
+                    selected_symbol,
+                    datetime.now(timezone.utc),
+                )
+        except Exception as error:
+            st.error(f"Unable to load {selected_symbol}: {error}")
+            st.session_state.pop("crypto_selected_snapshot", None)
+
+    snapshot = st.session_state.get("crypto_selected_snapshot")
+    if snapshot is not None and snapshot.symbol == selected_symbol:
+        st.markdown(f"### 📈 {snapshot.symbol} Detailed Analysis")
+        metric_cols = st.columns(6)
+        metric_cols[0].metric("Current Price", f"{snapshot.price:.8g}")
+        metric_cols[1].metric("EMA 9", f"{snapshot.ema9:.8g}")
+        metric_cols[2].metric("EMA 20", f"{snapshot.ema20:.8g}")
+        metric_cols[3].metric("RSI", f"{snapshot.rsi:.1f}")
+        metric_cols[4].metric("MACD Hist", f"{snapshot.macd_histogram:.6g}")
+        metric_cols[5].metric("RVOL", f"{snapshot.relative_volume:.2f}x")
+
+        level_cols = st.columns(2)
+        with level_cols[0]:
+            st.markdown("#### 🟢 Support Levels")
+            if snapshot.support_levels:
+                for index, level in enumerate(snapshot.support_levels, 1):
+                    st.write(f"S{index}: **{level:.8g}**")
+            else:
+                st.info("No confirmed support level below current price.")
+        with level_cols[1]:
+            st.markdown("#### 🔴 Resistance Levels")
+            if snapshot.resistance_levels:
+                for index, level in enumerate(snapshot.resistance_levels, 1):
+                    st.write(f"R{index}: **{level:.8g}**")
+            else:
+                st.info("No confirmed resistance level above current price.")
+
+        st.markdown("#### 🚨 Trading Alert")
+        if snapshot.alert == "BUY ALERT":
+            st.success(f"🟢 BUY ALERT — {snapshot.symbol}")
+        elif snapshot.alert == "SELL ALERT":
+            st.error(f"🔴 SELL ALERT — {snapshot.symbol}")
+        else:
+            st.warning(f"🟡 WATCH — {snapshot.symbol}")
+        st.write(snapshot.alert_reason)
+
+        if snapshot.candidate is not None:
+            plan = snapshot.candidate
+            plan_cols = st.columns(5)
+            plan_cols[0].metric("Entry", f"{plan.entry:.8g}")
+            plan_cols[1].metric("Stop Loss", f"{plan.stop_loss:.8g}")
+            plan_cols[2].metric("Target 1", f"{plan.target_1:.8g}")
+            plan_cols[3].metric("Target 2", f"{plan.target_2:.8g}")
+            plan_cols[4].metric("Risk : Reward", f"1:{plan.risk_reward:.0f}")
 else:
     st.info("Run the crypto scanner to get automatically ranked opportunities.")
 
