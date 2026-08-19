@@ -127,6 +127,16 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
         st.error(f"Unable to load live {selected_symbol}: {error}")
         return
 
+    # The current price and indicators are live, but an alert is a historical
+    # event. Once generated, its entry/SL/targets must never move with price.
+    selected_alerts = [
+        record
+        for record in journal.records()
+        if record.symbol == snapshot.symbol
+    ]
+    active_alerts = [record for record in selected_alerts if record.status == "OPEN"]
+    active_alert = active_alerts[-1] if active_alerts else None
+
     st.markdown(f"### 📈 {snapshot.symbol} Live Analysis")
     st.caption(
         f"Live snapshot: {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')} · "
@@ -157,16 +167,37 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
             st.info("No confirmed resistance level above current price.")
 
     st.markdown("#### 🚨 Live Trading Alert")
-    if snapshot.alert == "BUY ALERT":
-        st.success(f"🟢 LIVE BUY ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
+    if active_alert is not None:
+        alert_label = "BUY" if active_alert.direction == "LONG" else "SELL"
+        if active_alert.direction == "LONG":
+            st.success(
+                f"🟢 LIVE BUY ALERT — {snapshot.symbol} at "
+                f"{active_alert.entry:.8g}"
+            )
+        else:
+            st.error(
+                f"🔴 LIVE SELL ALERT — {snapshot.symbol} at "
+                f"{active_alert.entry:.8g}"
+            )
+        st.write(active_alert.reason)
+    elif snapshot.alert == "BUY ALERT":
+        st.success(
+            f"🟢 LIVE BUY ALERT — {snapshot.symbol} at "
+            f"{snapshot.price:.8g}"
+        )
+        st.write(snapshot.alert_reason)
     elif snapshot.alert == "SELL ALERT":
-        st.error(f"🔴 LIVE SELL ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
+        st.error(
+            f"🔴 LIVE SELL ALERT — {snapshot.symbol} at "
+            f"{snapshot.price:.8g}"
+        )
+        st.write(snapshot.alert_reason)
     else:
         st.warning(f"🟡 LIVE WATCH — {snapshot.symbol}")
-    st.write(snapshot.alert_reason)
+        st.write(snapshot.alert_reason)
 
-    if snapshot.candidate is not None:
-        plan = snapshot.candidate
+    if active_alert is not None:
+        plan = active_alert
         plan_cols = st.columns(5)
         plan_cols[0].metric("Alert Price", f"{plan.entry:.8g}")
         plan_cols[1].metric("Stop Loss", f"{plan.stop_loss:.8g}")
@@ -176,11 +207,16 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
 
         current_pnl = _alert_pnl_percent(plan.direction, plan.entry, snapshot.price)
         pnl_label = "Profit" if current_pnl >= 0 else "Loss"
-        st.metric(f"Current {pnl_label} from Alert", f"{current_pnl:+.2f}%")
+        st.metric(
+            f"Current {pnl_label} from Alert",
+            f"{current_pnl:+.2f}%",
+        )
+    elif snapshot.candidate is not None:
+        st.info(
+            "Signal conditions are currently met, but no alert has been persisted yet. "
+            "The first persisted alert price becomes fixed."
+        )
 
-    selected_alerts = [
-        record for record in journal.records() if record.symbol == snapshot.symbol
-    ]
     if selected_alerts:
         latest = selected_alerts[-1]
         st.markdown("#### 📌 Active Alert Trade Plan")
@@ -200,7 +236,7 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
             st.success(f"🎯 Target 1 achieved at {latest.target_1:.8g}.")
         elif latest.stop_loss_hit:
             st.error(f"🛑 Stop loss hit at {latest.stop_loss:.8g}.")
-        else:
+        elif latest.status == "OPEN":
             st.info("Alert is OPEN. Sell price and target status update from live prices.")
 
 
