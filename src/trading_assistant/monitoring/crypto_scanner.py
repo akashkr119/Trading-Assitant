@@ -116,7 +116,6 @@ class CryptoIntradayScanner:
         macd_histogram = float(macd(close)["histogram"].iloc[-1])
         rvol = float(relative_volume(frame_5m).iloc[-1])
         trend_5m = float(supertrend(frame_5m)["direction"].iloc[-1])
-        close_15m = frame_15m["close"]
         trend_15m = float(supertrend(frame_15m)["direction"].iloc[-1])
 
         bullish = ema9 > ema20 and macd_histogram > 0 and trend_5m > 0 and trend_15m > 0
@@ -129,10 +128,14 @@ class CryptoIntradayScanner:
             return None
 
         direction = "LONG" if bullish else "SHORT"
-        score = 60.0
-        score += 15.0 if rvol >= 1.2 else 0.0
-        score += 10.0 if 55 <= rsi_value <= 70 if bullish else 30 <= rsi_value <= 45 else 0.0
-        score += 15.0
+        score = 75.0
+        if rvol >= 1.2:
+            score += 10.0
+        if bullish and 55 <= rsi_value <= 70:
+            score += 5.0
+        if bearish and 30 <= rsi_value <= 45:
+            score += 5.0
+        score += 10.0
 
         recent_range = frame_5m["high"].iloc[-20:] - frame_5m["low"].iloc[-20:]
         risk = max(float(recent_range.median()), latest * 0.002)
