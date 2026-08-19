@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from trading_assistant.data.interfaces import OHLCVBar, Timeframe
+from trading_assistant.data.interfaces import OHLCVBar
 from trading_assistant.monitoring.crypto_scanner import CryptoIntradayScanner
 
 
@@ -20,21 +20,31 @@ class FakeCryptoProvider:
 
 def _bars(count: int) -> list[OHLCVBar]:
     start = datetime(2026, 8, 19, tzinfo=timezone.utc)
-    return [
-        OHLCVBar(
-            timestamp=start + timedelta(minutes=5 * index),
-            open=100 + index,
-            high=102 + index,
-            low=99 + index,
-            close=101 + index,
-            volume=1000 + index * 10,
+    bars: list[OHLCVBar] = []
+    price = 100.0
+    for index in range(count):
+        if index < 25:
+            close = price + 0.05
+        else:
+            close = price + (0.7 if index % 4 else 0.35)
+        high = max(price, close) + 0.6
+        low = min(price, close) - 0.4
+        bars.append(
+            OHLCVBar(
+                timestamp=start + timedelta(minutes=5 * index),
+                open=price,
+                high=high,
+                low=low,
+                close=close,
+                volume=1000 + index * 20,
+            )
         )
-        for index in range(count)
-    ]
+        price = close
+    return bars
 
 
 def test_crypto_scanner_sets_four_to_one_reward_risk() -> None:
-    bars = _bars(80)
+    bars = _bars(120)
     scanner = CryptoIntradayScanner(
         FakeCryptoProvider(bars),
         universe=("BTCUSDT",),
