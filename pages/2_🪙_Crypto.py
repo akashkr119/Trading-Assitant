@@ -168,7 +168,6 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
 
     st.markdown("#### 🚨 Live Trading Alert")
     if active_alert is not None:
-        alert_label = "BUY" if active_alert.direction == "LONG" else "SELL"
         if active_alert.direction == "LONG":
             st.success(
                 f"🟢 LIVE BUY ALERT — {snapshot.symbol} at "
