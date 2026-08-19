@@ -87,6 +87,16 @@ class CryptoIntradayScanner:
         return tuple(candidates[:limit])
 
     @staticmethod
+    def _trend_direction(frame: pd.DataFrame) -> float:
+        """Return Supertrend direction, with an EMA fallback during warm-up."""
+        direction = float(supertrend(frame)["direction"].iloc[-1])
+        if pd.notna(direction):
+            return direction
+        close = float(frame["close"].iloc[-1])
+        ema20 = float(ema(frame["close"], 20).iloc[-1])
+        return 1.0 if close > ema20 else -1.0
+
+    @staticmethod
     def _score(
         symbol: str,
         bars_5m: list[OHLCVBar],
@@ -115,11 +125,21 @@ class CryptoIntradayScanner:
         rsi_value = float(rsi(close, 14).iloc[-1])
         macd_histogram = float(macd(close)["histogram"].iloc[-1])
         rvol = float(relative_volume(frame_5m).iloc[-1])
-        trend_5m = float(supertrend(frame_5m)["direction"].iloc[-1])
-        trend_15m = float(supertrend(frame_15m)["direction"].iloc[-1])
+        trend_5m = CryptoIntradayScanner._trend_direction(frame_5m)
+        trend_15m = CryptoIntradayScanner._trend_direction(frame_15m)
 
-        bullish = ema9 > ema20 and macd_histogram > 0 and trend_5m > 0 and trend_15m > 0
-        bearish = ema9 < ema20 and macd_histogram < 0 and trend_5m < 0 and trend_15m < 0
+        bullish = (
+            ema9 > ema20
+            and macd_histogram > 0
+            and trend_5m > 0
+            and trend_15m > 0
+        )
+        bearish = (
+            ema9 < ema20
+            and macd_histogram < 0
+            and trend_5m < 0
+            and trend_15m < 0
+        )
         if not bullish and not bearish:
             return None
         if bullish and not 50 <= rsi_value <= 75:
