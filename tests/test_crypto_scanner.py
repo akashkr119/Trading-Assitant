@@ -45,9 +45,13 @@ def _bars(count: int) -> list[OHLCVBar]:
 
 def test_crypto_scanner_sets_four_to_one_reward_risk(monkeypatch) -> None:
     bars = _bars(120)
-    series = pd.Series([100.0] * 120)
+    ema9 = pd.Series([101.0] * 120)
+    ema20 = pd.Series([100.0] * 120)
 
-    monkeypatch.setattr(crypto_scanner, "ema", lambda values, period: series)
+    def fake_ema(values, period):
+        return ema9 if period == 9 else ema20
+
+    monkeypatch.setattr(crypto_scanner, "ema", fake_ema)
     monkeypatch.setattr(
         crypto_scanner,
         "rsi",
