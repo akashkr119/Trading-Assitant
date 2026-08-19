@@ -191,7 +191,9 @@ alert_records = journal.records()
 if alert_records:
     history_rows = []
     for record in reversed(alert_records):
-        live_price = snapshot.price if snapshot is not None and record.symbol == snapshot.symbol else None
+        live_price = None
+        if snapshot is not None and record.symbol == snapshot.symbol:
+            live_price = snapshot.price
         comparison_price = live_price if live_price is not None else record.exit_price
         pnl = (
             _alert_pnl_percent(record.direction, record.entry, comparison_price)
