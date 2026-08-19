@@ -77,95 +77,158 @@ def _download_latest_excel() -> bytes:
         return response.read()
 
 
-def _find_column(columns: list[str], *needles: str) -> str | None:
+def _normalize_text(value: object) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).strip().lower())
+
+
+def _normalize_symbol(value: object) -> str:
+    text = str(value).strip().upper()
+    if text in {"", "NAN", "NONE", "NSE SYMBOL", "SYMBOL"}:
+        return ""
+    return re.sub(r"\s+", "", text)
+
+
+def _find_column(columns: list[object], *needles: str) -> object | None:
     normalized = {
-        column: re.sub(r"[^a-z0-9]", "", column.lower())
+        column: _normalize_text(column)
         for column in columns
     }
     for needle in needles:
-        wanted = re.sub(r"[^a-z0-9]", "", needle.lower())
+        wanted = _normalize_text(needle)
         for column, value in normalized.items():
-            if wanted in value:
+            if value == wanted or wanted in value:
                 return column
     return None
 
 
-def _normalise_symbol(value: object) -> str:
-    symbol = str(value).strip().upper()
-    symbol = symbol.replace(".NS", "")
-    return symbol
+def _header_row(raw: pd.DataFrame) -> int | None:
+    markers = (
+        "nse symbol",
+        "nse code",
+        "symbol",
+        "isin",
+        "company name",
+        "name of the company",
+    )
+    for index, row in raw.iterrows():
+        values = {_normalize_text(value) for value in row.tolist()}
+        if any(_normalize_text(marker) in values for marker in markers):
+            return int(index)
+        joined = " ".join(values)
+        if "nsesymbol" in joined or "companyname" in joined:
+            return int(index)
+    return None
 
 
-def _read_classification_frame(workbook: pd.ExcelFile) -> pd.DataFrame:
-    """Find the table whose header row contains an NSE-symbol field."""
-    for sheet in workbook.sheet_names:
-        raw = pd.read_excel(
-            workbook,
-            sheet_name=sheet,
-            header=None,
-            engine="openpyxl",
-        )
-        for row_index in range(min(len(raw), 20)):
-            values = [str(value).strip() for value in raw.iloc[row_index].tolist()]
-            if _find_column(values, "NSE Symbol", "NSE Code", "NSE") is None:
-                continue
-            frame = raw.iloc[row_index + 1 :].copy()
-            frame.columns = values
-            return frame.dropna(how="all")
-    raise RuntimeError("AMFI workbook does not contain a recognizable stock table")
+def _sheet_segment(sheet_name: str) -> str:
+    normalized = _normalize_text(sheet_name)
+    for name in CAP_NAMES:
+        if _normalize_text(name) in normalized:
+            return name
+    return ""
+
+
+def _rank_column(columns: list[object]) -> object | None:
+    return _find_column(
+        columns,
+        "Rank",
+        "Sr No",
+        "Sr. No.",
+        "Sr.No",
+        "Serial No",
+    )
 
 
 def _parse_excel(payload: bytes) -> dict[str, CapClassification]:
     workbook = pd.ExcelFile(BytesIO(payload), engine="openpyxl")
-    frame = _read_classification_frame(workbook)
-
-    frame.columns = [str(column).strip() for column in frame.columns]
-    symbol_column = _find_column(
-        frame.columns.tolist(),
-        "NSE Symbol",
-        "NSE Code",
-        "NSE",
-    )
-    isin_column = _find_column(frame.columns.tolist(), "ISIN")
-    category_column = _find_column(
-        frame.columns.tolist(),
-        "Category",
-        "Classification",
-        "Cap",
-    )
-    if symbol_column is None:
-        raise RuntimeError("AMFI workbook does not contain an NSE symbol column")
-
     result: dict[str, CapClassification] = {}
-    rows = frame.to_dict("records")
-    for position, row in enumerate(rows, 1):
-        symbol = _normalise_symbol(row.get(symbol_column, ""))
-        if not symbol or symbol == "NAN":
+
+    for sheet_name in workbook.sheet_names:
+        raw = pd.read_excel(
+            workbook,
+            sheet_name=sheet_name,
+            header=None,
+            engine="openpyxl",
+        )
+        if raw.empty:
             continue
 
-        raw_category = (
-            str(row.get(category_column, "")).strip()
-            if category_column
-            else ""
-        )
-        category = next(
-            (
-                name
-                for name in CAP_NAMES
-                if name.lower() in raw_category.lower()
-            ),
-            "",
-        )
-        if not category:
-            if position <= 100:
-                category = "Large Cap"
-            elif position <= 250:
-                category = "Mid Cap"
-            else:
-                category = "Small Cap"
+        header = _header_row(raw)
+        if header is None:
+            continue
 
-        isin = str(row.get(isin_column, "")).strip() if isin_column else ""
-        result[symbol] = CapClassification(symbol, category, isin)
+        frame = raw.iloc[header + 1 :].copy()
+        frame.columns = [str(value).strip() for value in raw.iloc[header].tolist()]
+        frame = frame.dropna(how="all")
+        if frame.empty:
+            continue
+
+        columns = frame.columns.tolist()
+        symbol_column = _find_column(
+            columns,
+            "NSE Symbol",
+            "NSE Code",
+            "Symbol",
+        )
+        isin_column = _find_column(columns, "ISIN")
+        category_column = _find_column(
+            columns,
+            "Category",
+            "Classification",
+            "Cap Category",
+            "Market Cap Category",
+        )
+        rank_column = _rank_column(columns)
+
+        if symbol_column is None:
+            continue
+
+        sheet_segment = _sheet_segment(str(sheet_name))
+        rows = frame.to_dict("records")
+        data_position = 0
+        for row in rows:
+            symbol = _normalize_symbol(row.get(symbol_column, ""))
+            if not symbol:
+                continue
+
+            data_position += 1
+            raw_category = (
+                str(row.get(category_column, "")).strip()
+                if category_column is not None
+                else ""
+            )
+            category = next(
+                (
+                    name
+                    for name in CAP_NAMES
+                    if _normalize_text(name) in _normalize_text(raw_category)
+                ),
+                "",
+            )
+            if not category:
+                category = sheet_segment
+
+            rank_value = row.get(rank_column) if rank_column is not None else None
+            try:
+                rank = int(float(rank_value))
+            except (TypeError, ValueError):
+                rank = data_position
+
+            if not category:
+                if rank <= 100:
+                    category = "Large Cap"
+                elif rank <= 250:
+                    category = "Mid Cap"
+                else:
+                    category = "Small Cap"
+
+            isin = ""
+            if isin_column is not None:
+                isin = str(row.get(isin_column, "")).strip()
+                if isin.upper() == "NAN":
+                    isin = ""
+
+            result[symbol] = CapClassification(symbol, category, isin)
 
     if not result:
         raise RuntimeError("No NSE symbols were parsed from the AMFI workbook")
@@ -179,9 +242,7 @@ def load_current_classification() -> dict[str, CapClassification]:
         classification = _parse_excel(payload)
         CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         CACHE_PATH.write_text(
-            json.dumps(
-                {key: value.__dict__ for key, value in classification.items()}
-            ),
+            json.dumps({key: value.__dict__ for key, value in classification.items()}),
             encoding="utf-8",
         )
         return classification
