@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
+
 from trading_assistant.data.interfaces import OHLCVBar
+from trading_assistant.monitoring import crypto_scanner
 from trading_assistant.monitoring.crypto_scanner import CryptoIntradayScanner
 
 
@@ -23,18 +26,13 @@ def _bars(count: int) -> list[OHLCVBar]:
     bars: list[OHLCVBar] = []
     price = 100.0
     for index in range(count):
-        if index < 30:
-            close = price + 0.05
-        else:
-            close = price + (0.7 if index % 4 else 0.35)
-        high = max(price, close) + 0.25
-        low = min(price, close) - 0.25
+        close = price + 0.5
         bars.append(
             OHLCVBar(
                 timestamp=start + timedelta(minutes=5 * index),
                 open=price,
-                high=high,
-                low=low,
+                high=close + 0.2,
+                low=price - 0.2,
                 close=close,
                 volume=1000,
             )
@@ -43,8 +41,38 @@ def _bars(count: int) -> list[OHLCVBar]:
     return bars
 
 
-def test_crypto_scanner_sets_four_to_one_reward_risk() -> None:
+def test_crypto_scanner_sets_four_to_one_reward_risk(monkeypatch) -> None:
     bars = _bars(120)
+    index = pd.RangeIndex(len(bars))
+
+    monkeypatch.setattr(
+        crypto_scanner,
+        "ema",
+        lambda series, period: pd.Series(
+            101.0 if period == 9 else 100.0, index=index
+        ),
+    )
+    monkeypatch.setattr(
+        crypto_scanner,
+        "rsi",
+        lambda series, period: pd.Series(60.0, index=index),
+    )
+    monkeypatch.setattr(
+        crypto_scanner,
+        "macd",
+        lambda series: pd.DataFrame({"histogram": pd.Series(1.0, index=index)}),
+    )
+    monkeypatch.setattr(
+        crypto_scanner,
+        "relative_volume",
+        lambda frame: pd.Series(1.5, index=frame.index),
+    )
+    monkeypatch.setattr(
+        crypto_scanner,
+        "supertrend",
+        lambda frame: pd.DataFrame({"direction": pd.Series(1.0, index=frame.index)}),
+    )
+
     scanner = CryptoIntradayScanner(
         FakeCryptoProvider(bars),
         universe=("BTCUSDT",),
