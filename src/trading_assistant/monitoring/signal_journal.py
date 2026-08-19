@@ -146,8 +146,14 @@ class SignalJournal:
         closed = [r for r in records if r.outcome_r is not None]
         wins = [r for r in closed if r.outcome_r > 0]
         losses = [r for r in closed if r.outcome_r < 0]
-        target_1 = [r for r in records if r.target_1_achieved]
-        target_2 = [r for r in records if r.target_2_achieved]
+        target_1 = [
+            r
+            for r in records
+            if r.target_1_achieved or r.status in {"TARGET_1", "TARGET_2"}
+        ]
+        target_2 = [
+            r for r in records if r.target_2_achieved or r.status == "TARGET_2"
+        ]
         values = [float(r.outcome_r) for r in closed]
         average_r = sum(values) / len(values) if values else 0.0
         gross_profit = sum(v for v in values if v > 0)
