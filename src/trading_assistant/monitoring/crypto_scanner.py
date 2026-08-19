@@ -10,7 +10,6 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.indicators import ema, macd, relative_volume, rsi, supertrend
 
-
 CRYPTO_UNIVERSE = (
     "BTCUSDT",
     "ETHUSDT",
