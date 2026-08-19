@@ -66,18 +66,20 @@ if candidates:
         "🔄 Refresh selected coin analysis",
         use_container_width=True,
     )
-    if detail_clicked or "crypto_selected_snapshot" not in st.session_state:
+    snapshot = st.session_state.get("crypto_selected_snapshot")
+    if detail_clicked or snapshot is None or snapshot.symbol != selected_symbol:
         try:
             with st.spinner(f"Loading detailed {selected_symbol} analysis..."):
-                st.session_state.crypto_selected_snapshot = scanner.analyze_symbol(
+                snapshot = scanner.analyze_symbol(
                     selected_symbol,
                     datetime.now(timezone.utc),
                 )
+                st.session_state.crypto_selected_snapshot = snapshot
         except Exception as error:
             st.error(f"Unable to load {selected_symbol}: {error}")
+            snapshot = None
             st.session_state.pop("crypto_selected_snapshot", None)
 
-    snapshot = st.session_state.get("crypto_selected_snapshot")
     if snapshot is not None and snapshot.symbol == selected_symbol:
         st.markdown(f"### 📈 {snapshot.symbol} Detailed Analysis")
         metric_cols = st.columns(6)
