@@ -52,6 +52,12 @@ class YFinanceFundamentalsProvider:
         cashflow = ticker.cashflow
         balance = ticker.balance_sheet
         periods = self._periods(income, cashflow, balance)
+        debt_to_equity = self._number(info.get("debtToEquity"))
+        if debt_to_equity is None and periods:
+            latest = periods[0]
+            if latest.debt is not None and latest.equity not in (None, 0):
+                debt_to_equity = latest.debt / latest.equity
+
         return FundamentalsSnapshot(
             symbol=symbol,
             company_name=str(info.get("longName") or info.get("shortName") or symbol),
@@ -59,8 +65,8 @@ class YFinanceFundamentalsProvider:
             source=self.source,
             periods=periods,
             roe=self._percent(info.get("returnOnEquity")),
-            roce=None,
-            debt_to_equity=self._number(info.get("debtToEquity")),
+            roce=self._roce(income, balance),
+            debt_to_equity=debt_to_equity,
             market_cap=self._number(info.get("marketCap")),
             pe_ratio=self._number(info.get("trailingPE")),
             pb_ratio=self._number(info.get("priceToBook")),
@@ -86,6 +92,38 @@ class YFinanceFundamentalsProvider:
             if name in frame.index and column in frame.columns:
                 return YFinanceFundamentalsProvider._number(frame.loc[name, column])
         return None
+
+    @classmethod
+    def _roce(cls, income: pd.DataFrame, balance: pd.DataFrame) -> float | None:
+        """Estimate ROCE from EBIT and average debt-plus-equity capital."""
+        if income.empty or balance.empty:
+            return None
+        columns = [column for column in income.columns if column in balance.columns]
+        if not columns:
+            return None
+        current = columns[0]
+        ebit = cls._value(income, ("EBIT", "Operating Income"), current)
+        if ebit is None:
+            return None
+
+        capital_values: list[float] = []
+        for column in columns[:2]:
+            debt = cls._value(
+                balance,
+                ("Total Debt", "Long Term Debt And Capital Lease Obligation"),
+                column,
+            )
+            equity = cls._value(
+                balance,
+                ("Stockholders Equity", "Common Stock Equity"),
+                column,
+            )
+            if debt is not None and equity is not None:
+                capital_values.append(debt + equity)
+        if not capital_values or sum(capital_values) <= 0:
+            return None
+        capital_employed = sum(capital_values) / len(capital_values)
+        return ebit / capital_employed * 100
 
     @classmethod
     def _periods(
