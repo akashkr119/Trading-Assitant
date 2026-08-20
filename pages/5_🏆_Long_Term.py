@@ -6,29 +6,25 @@ import streamlit as st
 
 from trading_assistant.analysis.long_term_detail import build_long_term_detail
 from trading_assistant.analysis.multibagger_scanner import MultibaggerScanner
-from trading_assistant.data.fundamentals_provider import FundamentalsProvider
+from trading_assistant.application.long_term_setup import build_long_term_research
 
 st.set_page_config(page_title="Long-Term Investment", page_icon="🏆", layout="wide")
 st.title("🏆 Long-Term Investment")
 st.caption("Research and evidence-based ranking for long-term NSE opportunities.")
 
-provider = st.session_state.get("fundamentals_provider")
-universe = st.session_state.get("nse_long_term_universe", [])
-if not isinstance(universe, list):
-    universe = list(universe)
+if "fundamentals_provider" not in st.session_state:
+    st.session_state.fundamentals_provider, st.session_state.nse_long_term_universe = (
+        build_long_term_research()
+    )
 
-if provider is None:
-    st.warning("Configure a fundamentals provider before scanning long-term opportunities.")
-    st.stop()
-
+provider = st.session_state.fundamentals_provider
+universe = list(st.session_state.nse_long_term_universe)
 scanner = MultibaggerScanner(provider)
+
 limit = st.selectbox("Number of candidates", [5, 10, 15, 20], index=1)
 if st.button("🔎 Find Best Long-Term Stocks", type="primary", use_container_width=True):
-    if not universe:
-        st.error("No NSE long-term stock universe is configured yet.")
-    else:
-        with st.spinner("Examining company fundamentals and ranking opportunities..."):
-            st.session_state.long_term_scan = scanner.scan(universe, limit=limit)
+    with st.spinner("Examining company fundamentals and ranking opportunities..."):
+        st.session_state.long_term_scan = scanner.scan(universe, limit=limit)
 
 scan = st.session_state.get("long_term_scan")
 if scan is None:
@@ -37,13 +33,17 @@ if scan is None:
 
 if not scan.candidates:
     st.warning("No candidates passed the fundamental-data coverage threshold.")
+    if scan.failures:
+        with st.expander("Research diagnostics"):
+            for failure in scan.failures:
+                st.warning(f"{failure.symbol}: {failure.reason}")
     st.stop()
 
 st.subheader("🏆 Best Long-Term Opportunities")
 rows = [
     {
         "Rank": index,
-        "Stock": item.symbol,
+        "Stock": item.symbol.replace(".NS", ""),
         "Company": item.company_name,
         "Score": f"{item.score.overall:.1f}/100",
         "Growth": f"{item.score.growth:.1f}",
@@ -60,6 +60,7 @@ st.dataframe(rows, use_container_width=True, hide_index=True)
 selected = st.selectbox(
     "🎯 Select a stock for complete examination",
     [item.symbol for item in scan.candidates],
+    format_func=lambda symbol: symbol.replace(".NS", ""),
     key="long_term_selected",
 )
 
@@ -98,12 +99,8 @@ growth_cols[2].metric(
 
 st.subheader("🏦 Financial Strength")
 st.write(detail.balance_sheet_comment)
-st.write(
-    f"ROE: {snapshot.roe:.1f}%" if snapshot.roe is not None else "ROE: Unavailable"
-)
-st.write(
-    f"ROCE: {snapshot.roce:.1f}%" if snapshot.roce is not None else "ROCE: Unavailable"
-)
+st.write(f"ROE: {snapshot.roe:.1f}%" if snapshot.roe is not None else "ROE: Unavailable")
+st.write(f"ROCE: {snapshot.roce:.1f}%" if snapshot.roce is not None else "ROCE: Unavailable")
 st.write(
     f"Debt / Equity: {snapshot.debt_to_equity:.2f}"
     if snapshot.debt_to_equity is not None
@@ -113,10 +110,24 @@ st.write(
 st.subheader("💸 Valuation")
 st.write(detail.valuation_comment)
 valuation_cols = st.columns(4)
-valuation_cols[0].metric("P/E", f"{snapshot.pe_ratio:.1f}x" if snapshot.pe_ratio is not None else "Unavailable")
-valuation_cols[1].metric("P/B", f"{snapshot.pb_ratio:.1f}x" if snapshot.pb_ratio is not None else "Unavailable")
-valuation_cols[2].metric("EV/EBITDA", f"{snapshot.ev_to_ebitda:.1f}x" if snapshot.ev_to_ebitda is not None else "Unavailable")
-valuation_cols[3].metric("Market Cap", f"₹{snapshot.market_cap:,.0f}" if snapshot.market_cap is not None else "Unavailable")
+valuation_cols[0].metric(
+    "P/E", f"{snapshot.pe_ratio:.1f}x" if snapshot.pe_ratio is not None else "Unavailable"
+)
+valuation_cols[1].metric(
+    "P/B", f"{snapshot.pb_ratio:.1f}x" if snapshot.pb_ratio is not None else "Unavailable"
+)
+valuation_cols[2].metric(
+    "EV/EBITDA",
+    f"{snapshot.ev_to_ebitda:.1f}x"
+    if snapshot.ev_to_ebitda is not None
+    else "Unavailable",
+)
+valuation_cols[3].metric(
+    "Market Cap",
+    f"₹{snapshot.market_cap:,.0f}"
+    if snapshot.market_cap is not None
+    else "Unavailable",
+)
 
 st.subheader("🟢 Why the Tool Is Suggesting This Stock")
 if detail.reasons:
@@ -135,6 +146,11 @@ else:
 st.subheader("☠️ What Would Break the Multibagger Thesis?")
 for item in detail.thesis_killers:
     st.write(f"• {item}")
+
+if scan.failures:
+    with st.expander("🔧 Research diagnostics"):
+        for failure in scan.failures:
+            st.warning(f"{failure.symbol}: {failure.reason}")
 
 st.caption(
     f"Data source: {snapshot.source} · Data as of: {snapshot.as_of.isoformat()} · "
