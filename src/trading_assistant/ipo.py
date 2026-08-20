@@ -43,9 +43,13 @@ def assess_ipo(
     cons: list[str] = []
     risks: list[str] = []
     if revenue_growth >= 15:
-        pros.append(f"Revenue growth is {revenue_growth:.1f}%, indicating meaningful expansion.")
+        pros.append(
+            f"Revenue growth is {revenue_growth:.1f}%, indicating meaningful expansion."
+        )
     else:
-        cons.append(f"Revenue growth is only {revenue_growth:.1f}%, limiting the growth case.")
+        cons.append(
+            f"Revenue growth is only {revenue_growth:.1f}%, limiting the growth case."
+        )
     if roce >= 15 and roe >= 15:
         pros.append(f"Returns are healthy: ROCE {roce:.1f}% and ROE {roe:.1f}%.")
     else:
@@ -57,15 +61,30 @@ def assess_ipo(
     if valuation_vs_peers <= 0:
         pros.append("IPO valuation is not above the selected peer benchmark.")
     else:
-        cons.append(f"IPO valuation is {valuation_vs_peers:.1f}% above the peer benchmark.")
+        cons.append(
+            f"IPO valuation is {valuation_vs_peers:.1f}% above the peer benchmark."
+        )
     if fresh_issue_share >= 0.5:
         pros.append("A substantial part of the issue raises fresh capital for the company.")
     else:
-        risks.append("The issue is predominantly offer-for-sale, so less capital reaches the company.")
-    valuation = "ATTRACTIVE" if valuation_vs_peers <= -10 else "FAIR" if valuation_vs_peers <= 10 else "EXPENSIVE"
-    financial_quality = "STRONG" if revenue_growth >= 15 and roe >= 15 and roce >= 15 else "MIXED"
-    long_term_view = "CONSIDER" if financial_quality == "STRONG" and valuation != "EXPENSIVE" else "WAIT / WATCH"
-    listing_view = "RESEARCH FURTHER"  # subscription/listing-demand data is deliberately not invented.
+        risks.append(
+            "The issue is predominantly offer-for-sale, so less capital reaches the company."
+        )
+    if valuation_vs_peers <= -10:
+        valuation = "ATTRACTIVE"
+    elif valuation_vs_peers <= 10:
+        valuation = "FAIR"
+    else:
+        valuation = "EXPENSIVE"
+    financial_quality = (
+        "STRONG" if revenue_growth >= 15 and roe >= 15 and roce >= 15 else "MIXED"
+    )
+    long_term_view = (
+        "CONSIDER"
+        if financial_quality == "STRONG" and valuation != "EXPENSIVE"
+        else "WAIT / WATCH"
+    )
+    listing_view = "RESEARCH FURTHER"
     return IPOAssessment(
         valuation=valuation,
         financial_quality=financial_quality,
