@@ -253,6 +253,8 @@ else:
     if not candidates and not market_open:
         st.warning("NSE regular session is closed. Intraday scanner is paused.")
 
+    intraday_live_slot = st.empty()
+
     st.divider()
     st.subheader("📅 Swing Trading Scanner")
     st.write(
@@ -678,7 +680,8 @@ def selected_nse_intraday_panel() -> None:
 
 
 if connected and st.session_state.nse_intraday_selected:
-    selected_nse_intraday_panel()
+    with intraday_live_slot.container():
+        selected_nse_intraday_panel()
 
 st.subheader("Selected stocks to monitor")
 if symbols:
