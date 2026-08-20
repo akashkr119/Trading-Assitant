@@ -24,6 +24,11 @@ if scanner is None or not isinstance(scanner, RobustCryptoIntradayScanner):
 journal = SignalJournal()
 
 
+def _status(label: str, bullish: bool, direction: str) -> None:
+    icon = "🟢" if (bullish and direction == "BULLISH") or (not bullish and direction == "BEARISH") else "🔴"
+    st.write(f"{icon} **{label}: {direction}**")
+
+
 def _render_live_selected_coin(selected_symbol: str) -> None:
     """Refresh selected coin market data and its live alert state."""
     try:
@@ -40,13 +45,31 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
         f"Live snapshot: {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')} · "
         "updates automatically every 5 seconds"
     )
-    metric_cols = st.columns(6)
+
+    metric_cols = st.columns(7)
     metric_cols[0].metric("Current Price", f"{snapshot.price:.8g}")
     metric_cols[1].metric("EMA 9", f"{snapshot.ema9:.8g}")
     metric_cols[2].metric("EMA 20", f"{snapshot.ema20:.8g}")
     metric_cols[3].metric("RSI", f"{snapshot.rsi:.1f}")
     metric_cols[4].metric("MACD Hist", f"{snapshot.macd_histogram:.6g}")
     metric_cols[5].metric("RVOL", f"{snapshot.relative_volume:.2f}x")
+    metric_cols[6].metric("Momentum", f"{snapshot.momentum_5bar_pct:+.2f}%")
+
+    st.markdown("#### 🧭 Multi-Timeframe Confirmation")
+    timeframe_cols = st.columns(4)
+    timeframe_cols[0].metric("5m Supertrend", snapshot.trend_5m)
+    timeframe_cols[1].metric("15m Supertrend", snapshot.trend_15m)
+    timeframe_cols[2].metric("1H Supertrend", snapshot.trend_1h)
+    timeframe_cols[3].metric("Momentum (5 bars)", f"{snapshot.momentum_5bar_pct:+.2f}%")
+
+    st.markdown("#### 🧩 Confluence Breakdown")
+    passed = sum(status for _, status in snapshot.confluence)
+    total = len(snapshot.confluence)
+    confluence_cols = st.columns(3)
+    for index, (name, status) in enumerate(snapshot.confluence):
+        with confluence_cols[index % 3]:
+            st.write(f"{'✅' if status else '❌'} **{name}**")
+    st.caption(f"{passed}/{total} core conditions confirmed · 1H confirmation shown separately")
 
     level_cols = st.columns(2)
     with level_cols[0]:
@@ -69,8 +92,10 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
         st.success(f"🟢 LIVE BUY ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
     elif snapshot.alert == "SELL ALERT":
         st.error(f"🔴 LIVE SELL ALERT — {snapshot.symbol} at {snapshot.price:.8g}")
+    elif snapshot.alert == "NEAR SETUP":
+        st.warning(f"🟡 NEAR SETUP — {snapshot.symbol} · waiting for confirmation")
     else:
-        st.warning(f"🟡 LIVE WATCH — {snapshot.symbol}")
+        st.info(f"⚪ WATCH — {snapshot.symbol}")
     st.write(snapshot.alert_reason)
 
     if snapshot.candidate is not None:
@@ -83,6 +108,25 @@ def _render_live_selected_coin(selected_symbol: str) -> None:
         plan_cols[4].metric("Target 1", f"{candidate.target_1:.8g}")
         plan_cols[5].metric("Target 2", f"{candidate.target_2:.8g}")
         st.info(candidate.reason)
+
+        entry_distance = abs(snapshot.price - candidate.entry) / candidate.entry * 100
+        if entry_distance <= 0.25:
+            entry_status = "🟢 IDEAL ENTRY ZONE"
+        elif entry_distance <= 0.75:
+            entry_status = "🟡 NEAR ENTRY — watch for confirmation"
+        else:
+            entry_status = "🟠 EXTENDED — avoid chasing"
+        st.markdown(f"**Entry status:** {entry_status} · {entry_distance:.2f}% from planned entry")
+
+        risk_cols = st.columns(2)
+        with risk_cols[0]:
+            st.markdown("#### ⚠️ Invalidation")
+            st.warning(snapshot.invalidation)
+        with risk_cols[1]:
+            st.markdown("#### 🔄 Reversal Watch")
+            st.info(snapshot.reversal)
+    else:
+        st.info("No active trade plan. Wait for confirmation before entering.")
 
 
 st.subheader("⚡ Crypto Intraday")
@@ -111,6 +155,7 @@ if candidates:
             "Rank": index,
             "Coin": item.symbol,
             "Signal": item.direction,
+            "Type": "CONFIRMED" if item.score >= 75 else "NEAR SETUP",
             "Score": f"{item.score:.0f}/100",
             "Price": f"{item.price:.8g}",
             "Entry": f"{item.entry:.8g}",
@@ -138,8 +183,8 @@ if candidates:
     live_selected_coin()
 else:
     st.warning(
-        "No full-confluence setup is available right now. The scanner will rank "
-        "near-setups when market conditions are mixed."
+        "No ranked crypto setup is available yet. Check the scan diagnostics for "
+        "market-data errors or insufficient candles."
     )
 
 st.markdown("### 📒 BUY / SELL Alert History")
