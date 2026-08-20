@@ -1,0 +1,4 @@
+{
+  "name": "Trading Assistant",
+  "postStartCommand": "nohup bash .devcontainer/auto-sync.sh >/tmp/trading-assistant-auto-sync-bootstrap.log 2>&1 &"
+}
