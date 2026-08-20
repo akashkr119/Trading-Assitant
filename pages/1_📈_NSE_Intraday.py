@@ -308,7 +308,7 @@ def _render_selected(symbol: str) -> None:
     indicator_cols[3].metric("MACD Hist", f"{snapshot['macd']:.4f}")
     indicator_cols[4].metric("RVOL", f"{snapshot['rvol']:.2f}x")
     indicator_cols[5].metric("Supertrend", str(snapshot["supertrend"]))
-    indicator_cols[6].metric("VWAP Position", "ABOVE" if snapshot["price"] >= snapshot["vwap"] else "BELOW")
+    indicator_cols[6].metric("VWAP Position", "ABOVE" if snapshot["price"] >= snapshot["vwap"] else "BELOW",)
 
     trend_cols = st.columns(4)
     trend_cols[0].metric("1m Trend", str(snapshot["trend_1m"]))
