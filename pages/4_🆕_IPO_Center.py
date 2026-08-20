@@ -170,11 +170,13 @@ st.markdown("## 🧭 Investor Checklist")
 checklist = st.columns(3)
 checklist[0].markdown(
     "**Issue structure**\n\n"
-    "Review fresh issue versus OFS. Fresh capital funds the company; OFS proceeds go to selling holders."
+    "Review fresh issue versus OFS. Fresh capital funds the company; "
+    "OFS proceeds go to selling holders."
 )
 checklist[1].markdown(
     "**Valuation**\n\n"
-    "Compare the IPO valuation with listed peers using RHP financials. Do not treat GMP as valuation evidence."
+    "Compare the IPO valuation with listed peers using RHP financials. "
+    "Do not treat GMP as valuation evidence."
 )
 checklist[2].markdown(
     "**Risk & liquidity**\n\n"
@@ -225,10 +227,14 @@ for column, (label, value) in zip(cols, fundamental_fields.items()):
 st.markdown("## ⚠️ IPO Risk Checklist")
 for item in (
     "Read the latest RHP/DRHP and verify the final price band and issue dates.",
-    "Check revenue, profit, operating cash flow, debt and promoter holding from the offer document.",
-    "Understand how IPO proceeds will be used and whether the issue is mostly fresh capital or OFS.",
-    "Compare valuation with listed peers using consistent earnings and book-value measures.",
-    "For SME IPOs, pay particular attention to lot size, liquidity and post-listing volatility.",
+    "Check revenue, profit, operating cash flow, debt and promoter holding "
+    "from the offer document.",
+    "Understand how IPO proceeds will be used and whether the issue is mostly "
+    "fresh capital or OFS.",
+    "Compare valuation with listed peers using consistent earnings and "
+    "book-value measures.",
+    "For SME IPOs, pay particular attention to lot size, liquidity and "
+    "post-listing volatility.",
 ):
     st.write(f"• {item}")
 
