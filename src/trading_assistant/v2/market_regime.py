@@ -69,16 +69,27 @@ def classify_market_regime(observation: MarketObservation) -> MarketRegimeResult
 
     if observation.volume_strength is not None:
         signals.append(max(-1.0, min(1.0, observation.volume_strength)))
-        reasons.append("Participation is strong." if observation.volume_strength > 0.2 else "Participation is subdued.")
+        reasons.append(
+            "Participation is strong."
+            if observation.volume_strength > 0.2
+            else "Participation is subdued."
+        )
 
     if observation.sector_strength is not None:
         signals.append(max(-1.0, min(1.0, observation.sector_strength)))
-        reasons.append("Sector participation is supportive." if observation.sector_strength > 0.2 else "Sector participation is weak.")
+        reasons.append(
+            "Sector participation is supportive."
+            if observation.sector_strength > 0.2
+            else "Sector participation is weak."
+        )
 
     score = sum(signals) / len(signals) if signals else 0.0
     confidence = min(100.0, len(signals) / 4 * 100)
 
-    if observation.volatility_percentile is not None and observation.volatility_percentile >= 85:
+    if (
+        observation.volatility_percentile is not None
+        and observation.volatility_percentile >= 85
+    ):
         regime = MarketRegime.HIGH_VOLATILITY
         reasons.append("Volatility is in the high-risk regime.")
     elif score >= 0.35:
