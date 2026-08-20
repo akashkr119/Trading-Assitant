@@ -15,53 +15,53 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Reorder intraday sections and make metrics responsive
+      - name: Rebuild app from master and apply responsive layout
         shell: python
         run: |
           from pathlib import Path
           from textwrap import dedent, indent
           import subprocess
 
-          subprocess.run(
-              ["git", "fetch", "origin", "master", "--depth=1"],
-              check=True,
-          )
+          subprocess.run(["git", "fetch", "origin", "master", "--depth=1"], check=True)
           subprocess.run(["git", "checkout", "origin/master", "--", "app.py"], check=True)
 
-          p = Path("app.py")
-          s = p.read_text(encoding="utf-8")
+          path = Path("app.py")
+          source = path.read_text(encoding="utf-8")
+
+          swing_start = '    st.divider()\n    st.subheader("📅 Swing Trading Scanner")\n'
+          swing_end = '\n\ndef _pnl_percent(direction: str, entry: float, price: float) -> float:\n'
+          start = source.find(swing_start)
+          if start < 0:
+              raise SystemExit("Swing section start not found")
+          end = source.find(swing_end, start)
+          if end < 0:
+              raise SystemExit("Swing section end not found")
+          swing = dedent(source[start:end]).strip("\n")
+          source = source[:start] + source[end:]
 
           diag = '''    if scanner is not None and scanner.last_scan_count:\n        with st.expander("🔧 Intraday scan diagnostics"):\n            diag_cols = st.columns(4)\n            diag_cols[0].metric("Stocks scanned", scanner.last_scan_count)\n            diag_cols[1].metric("Data received", scanner.last_data_count)\n            diag_cols[2].metric("Qualified", scanner.last_qualified_count)\n            diag_cols[3].metric("Data errors", len(scanner.last_scan_errors))\n            if scanner.last_scan_errors:\n                st.caption("The first 20 data errors are shown below.")\n                for failed_symbol, error in list(scanner.last_scan_errors.items())[:20]:\n                    st.warning(f"{failed_symbol}: {error}")\n'''
-          if diag not in s:
-              raise SystemExit("diagnostics block missing")
-          s = s.replace(diag, "", 1)
-
-          a = s.index('    st.divider()\n    st.subheader("📅 Swing Trading Scanner")\n')
-          b = s.index('\n\ndef _pnl_percent(direction: str, entry: float, price: float) -> float:\n', a)
-          swing = dedent(s[a:b]).strip("\n")
-          s = s[:a] + s[b:]
+          if diag not in source:
+              raise SystemExit("Intraday diagnostics block not found")
+          source = source.replace(diag, "", 1)
 
           status_old = '''status_col, market_col, watch_col, signal_col = st.columns(4)\nwith status_col:\n    st.metric("Broker", "Connected" if connected else "Disconnected")\nwith market_col:\n    st.metric("NSE Market", "OPEN" if market_open else "CLOSED")\nwith watch_col:\n    st.metric("Selected", len(symbols))\nwith signal_col:\n    st.metric("Active Signals", len(st.session_state.results))'''
           status_new = '''status_rows = [\n    (("Broker", "Connected" if connected else "Disconnected"), ("NSE Market", "OPEN" if market_open else "CLOSED")),\n    (("Selected", len(symbols)), ("Active Signals", len(st.session_state.results))),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for i, (label, value) in enumerate(status_row):\n        status_cols[i].metric(label, value)'''
-          s = s.replace(status_old, status_new, 1)
+          source = source.replace(status_old, status_new, 1)
 
           metrics_old = '''cols = st.columns(7)\n    cols[0].metric("Current Price", f"₹{snapshot['price']:.2f}")\n    cols[1].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")\n    cols[2].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")\n    cols[3].metric("RSI", f"{snapshot['rsi']:.1f}")\n    cols[4].metric("MACD Hist", f"{snapshot['macd']:.4f}")\n    cols[5].metric("RVOL", f"{snapshot['rvol']:.2f}x")\n    cols[6].metric("Supertrend", str(snapshot['supertrend']))'''
           metrics_new = '''metric_rows = [\n        (("Current Price", f"₹{snapshot['price']:.2f}"), ("EMA 9", f"₹{snapshot['ema9']:.2f}")),\n        (("EMA 20", f"₹{snapshot['ema20']:.2f}"), ("RSI", f"{snapshot['rsi']:.1f}")),\n        (("MACD Hist", f"{snapshot['macd']:.4f}"), ("RVOL", f"{snapshot['rvol']:.2f}x")),\n        (("Supertrend", str(snapshot['supertrend'])),),\n    ]\n    for metric_row in metric_rows:\n        metric_cols = st.columns(2)\n        for i, (label, value) in enumerate(metric_row):\n            metric_cols[i].metric(label, value)'''
-          s = s.replace(metrics_old, metrics_new, 1)
+          source = source.replace(metrics_old, metrics_new, 1)
 
-          marker = 'live_panel()\n\nst.divider()\n'
-          if marker not in s:
-              raise SystemExit("live panel insertion point missing")
-          swing_block = "if connected:\n" + indent(swing, "    ") + "\n\n"
-          s = s.replace(
-              marker,
-              "live_panel()\n\n" + diag + "\n" + swing_block + "st.divider()\n",
-              1,
-          )
+          marker = 'if connected and st.session_state.nse_intraday_selected:\n    with intraday_live_slot.container():\n        selected_nse_intraday_panel()\n'
+          if marker not in source:
+              raise SystemExit("Live panel render block not found")
+          source = source.replace(marker, marker + "\n" + diag + "\n", 1)
 
-          p.write_text(s, encoding="utf-8")
+          # Append Swing after every other top-level dashboard rendering block.
+          source += "\nif connected:\n" + indent(swing, "    ") + "\n"
+          path.write_text(source, encoding="utf-8")
 
       - name: Validate syntax
         run: python -m py_compile app.py
