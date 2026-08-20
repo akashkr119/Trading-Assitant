@@ -17,8 +17,8 @@ from trading_assistant.data.yfinance_fundamentals import (
 st.set_page_config(page_title="Long-Term Investment", page_icon="🏆", layout="wide")
 st.title("🏆 Long-Term Investment")
 st.caption(
-    "Evidence-based NSE long-term research. Scores are thesis-strength indicators, "
-    "not predictions or guarantees of returns."
+    "Evidence-based NSE long-term research. Scores indicate thesis strength, "
+    "not guaranteed returns."
 )
 
 provider = YFinanceFundamentalsProvider()
@@ -29,11 +29,6 @@ if not provider_available:
         "🟡 Verified fundamentals are temporarily unavailable. Yahoo Finance's "
         "yfinance package is not installed in the current runtime. "
         "No investment score will be generated from missing data."
-    )
-    st.info(
-        "The dashboard remains available, but financial metrics will stay N/A until "
-        "a verified fundamentals provider is available. Rebuilding the environment "
-        "with the project's dependencies enables Yahoo Finance again."
     )
 
 
@@ -54,19 +49,24 @@ def _safe(value: object, suffix: str = "") -> str:
 def _snapshot_row(snapshot: FundamentalsSnapshot) -> dict[str, object]:
     periods = list(snapshot.periods)
     latest = periods[0] if periods else None
-    fcf = latest.free_cash_flow if latest else None
-    earnings = latest.earnings if latest else None
+    fcf_values = [p.free_cash_flow for p in periods]
+    earnings_values = [p.earnings for p in periods]
+    positive_fcf = [value for value in fcf_values if value is not None and value > 0]
     cash_conversion = None
-    if fcf is not None and earnings not in (None, 0):
-        cash_conversion = fcf / earnings
+    if latest and latest.free_cash_flow is not None and latest.earnings not in (None, 0):
+        cash_conversion = latest.free_cash_flow / latest.earnings
+    fcf_consistency = len(positive_fcf) / len(fcf_values) * 100 if fcf_values else None
     return {
         "Stock": snapshot.symbol.removesuffix(".NS"),
         "Company": snapshot.company_name,
         "Revenue CAGR": _cagr([p.revenue for p in periods]),
-        "Earnings CAGR": _cagr([p.earnings for p in periods]),
+        "Earnings CAGR": _cagr(earnings_values),
+        "FCF CAGR": _cagr(fcf_values),
         "ROE": snapshot.roe,
+        "ROCE": snapshot.roce,
         "Debt / Equity": snapshot.debt_to_equity,
-        "FCF Positive": bool(fcf is not None and fcf > 0),
+        "FCF Positive": bool(latest and latest.free_cash_flow is not None and latest.free_cash_flow > 0),
+        "FCF Consistency": fcf_consistency,
         "Cash Conversion": cash_conversion,
         "Market Cap": snapshot.market_cap,
         "P/E": snapshot.pe_ratio,
@@ -76,6 +76,10 @@ def _snapshot_row(snapshot: FundamentalsSnapshot) -> dict[str, object]:
         "Periods": len(periods),
         "Snapshot": snapshot,
     }
+
+
+def _bounded(value: float, low: float = 0.0, high: float = 100.0) -> float:
+    return min(high, max(low, value))
 
 
 def _score_rows(rows: list[dict[str, object]]) -> None:
@@ -102,34 +106,60 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
             for value in (row["Revenue CAGR"], row["Earnings CAGR"])
             if value is not None
         ]
-        growth = 0.0
-        if growth_values:
-            growth = min(100.0, max(0.0, sum(growth_values) / len(growth_values) * 2.5))
+        growth = _bounded(sum(growth_values) / len(growth_values) * 3.0) if growth_values else None
 
-        roe = float(row["ROE"]) if row["ROE"] is not None else 0.0
-        profitability = min(100.0, max(0.0, roe * 2.5))
-        debt = row["Debt / Equity"]
-        financial = (
-            50.0
-            if debt is None
-            else min(100.0, max(0.0, 100 - float(debt) * 35))
+        return_values = [
+            float(value)
+            for value in (row["ROE"], row["ROCE"])
+            if value is not None
+        ]
+        profitability = (
+            _bounded(sum(return_values) / len(return_values) * 2.5)
+            if return_values
+            else None
         )
-        cash = 70.0 if row["FCF Positive"] else 30.0
+
+        debt = row["Debt / Equity"]
+        financial = None if debt is None else _bounded(100 - float(debt) * 40)
+        consistency = row["FCF Consistency"]
+        cash_quality = (
+            None
+            if consistency is None
+            else _bounded(float(consistency) * 0.7 + (30 if row["FCF Positive"] else 0))
+        )
+
         pe_pct = percentile(row["P/E"], pe_values)
         pb_pct = percentile(row["P/B"], pb_values)
-        valuation = 50.0
-        if pe_pct is not None and pb_pct is not None:
-            row["Valuation Percentile"] = (pe_pct + pb_pct) / 2
-            valuation = 100.0 - float(row["Valuation Percentile"])
+        valuation = None
+        if pe_pct is not None or pb_pct is not None:
+            percentiles = [value for value in (pe_pct, pb_pct) if value is not None]
+            row["Valuation Percentile"] = sum(percentiles) / len(percentiles)
+            valuation = 100 - float(row["Valuation Percentile"])
 
-        row["Score"] = round(
-            growth * 0.30
-            + profitability * 0.25
-            + financial * 0.20
-            + cash * 0.15
-            + valuation * 0.10,
-            1,
-        )
+        components = {
+            "growth": (growth, 0.30),
+            "profitability": (profitability, 0.25),
+            "financial": (financial, 0.20),
+            "cash": (cash_quality, 0.15),
+            "valuation": (valuation, 0.10),
+        }
+        available = [(value, weight) for value, weight in components.values() if value is not None]
+        weight_total = sum(weight for _, weight in available)
+        score = sum(value * weight for value, weight in available) / weight_total if weight_total else 0
+        confidence = len(available) / len(components) * 100
+        row["Score"] = round(score, 1)
+        row["Confidence"] = round(confidence, 0)
+
+        if confidence < 60:
+            row["Classification"] = "Insufficient Evidence"
+        elif score >= 75:
+            row["Classification"] = "Strong Long-Term Candidate"
+        elif score >= 60:
+            row["Classification"] = "Watchlist"
+        elif valuation is not None and valuation < 25:
+            row["Classification"] = "High Valuation / Risk"
+        else:
+            row["Classification"] = "Weak Fundamentals"
 
 
 st.subheader("🔎 Fundamental Stock Scanner")
@@ -143,6 +173,12 @@ with scan_col:
     )
 with count_col:
     scan_count = st.selectbox("Stocks", [5, 10], index=1)
+
+if not provider_available:
+    st.info(
+        "No fundamental scan can run until a verified provider is available. "
+        "Missing data will never be converted into an investment score."
+    )
 
 if scan_clicked:
     rows: list[dict[str, object]] = []
@@ -170,15 +206,9 @@ errors = st.session_state.get("long_term_errors", {})
 
 if not watchlist:
     if provider_available:
-        st.info(
-            "No scan has been run yet. Click **Scan NSE Long-Term Opportunities** "
-            "to fetch verified financial statements."
-        )
+        st.info("No scan has been run yet. Click **Scan NSE Long-Term Opportunities**.")
     else:
-        st.info(
-            "No fundamental candidates are shown because there is no verified "
-            "fundamentals provider available in this runtime."
-        )
+        st.info("No fundamental candidates are shown without a verified data provider.")
     if errors:
         with st.expander("🔧 Data diagnostics"):
             for symbol, error in errors.items():
@@ -190,7 +220,7 @@ st.success(
     "data source: Yahoo Finance via yfinance"
 )
 
-st.subheader("🏆 Best Long-Term / Multibagger Candidates")
+st.subheader("🏆 Long-Term Opportunity Board")
 display_rows = []
 for index, row in enumerate(watchlist, 1):
     display_rows.append(
@@ -198,13 +228,14 @@ for index, row in enumerate(watchlist, 1):
             "Rank": index,
             "Stock": row["Stock"],
             "Company": row["Company"],
+            "Classification": row["Classification"],
             "Score": f"{row['Score']:.1f}/100",
+            "Confidence": f"{row['Confidence']:.0f}%",
             "Revenue CAGR": _safe(row["Revenue CAGR"], "%"),
             "Earnings CAGR": _safe(row["Earnings CAGR"], "%"),
             "ROE": _safe(row["ROE"], "%"),
             "Debt / Equity": _safe(row["Debt / Equity"]),
             "P/E": _safe(row["P/E"]),
-            "P/B": _safe(row["P/B"]),
             "FCF": "Positive" if row["FCF Positive"] else "Negative",
         }
     )
@@ -223,33 +254,35 @@ st.caption(
 )
 
 st.markdown("## 📊 Complete Investment Examination")
-score_cols = st.columns(5)
-score_cols[0].metric("Long-Term Score", f"{record['Score']:.1f}/100")
-score_cols[1].metric("Revenue CAGR", _safe(record["Revenue CAGR"], "%"))
-score_cols[2].metric("Earnings CAGR", _safe(record["Earnings CAGR"], "%"))
-score_cols[3].metric("ROE", _safe(record["ROE"], "%"))
-score_cols[4].metric("P/E", _safe(record["P/E"]))
+score_cols = st.columns(6)
+score_cols[0].metric("Score", f"{record['Score']:.1f}/100")
+score_cols[1].metric("Classification", record["Classification"])
+score_cols[2].metric("Confidence", f"{record['Confidence']:.0f}%")
+score_cols[3].metric("Revenue CAGR", _safe(record["Revenue CAGR"], "%"))
+score_cols[4].metric("Earnings CAGR", _safe(record["Earnings CAGR"], "%"))
+score_cols[5].metric("ROE", _safe(record["ROE"], "%"))
 
 sections = {
     "🏢 Business & Growth": {
         "Revenue CAGR": _safe(record["Revenue CAGR"], "%"),
         "Earnings CAGR": _safe(record["Earnings CAGR"], "%"),
+        "FCF CAGR": _safe(record["FCF CAGR"], "%"),
         "Reported periods": str(record["Periods"]),
     },
     "💰 Profitability": {
         "ROE": _safe(record["ROE"], "%"),
+        "ROCE": _safe(record["ROCE"], "%"),
         "Latest earnings": _safe(periods[0].earnings if periods else None),
-        "Evidence": "ROE from provider; ROCE requires EBIT/capital-employed normalization",
     },
     "💵 Cash Flow": {
         "FCF Positive": "Yes" if record["FCF Positive"] else "No",
+        "FCF Consistency": _safe(record["FCF Consistency"], "%"),
         "Cash Conversion": _safe(record["Cash Conversion"], "x"),
         "Latest FCF": _safe(periods[0].free_cash_flow if periods else None),
     },
     "🏦 Balance Sheet": {
         "Debt / Equity": _safe(record["Debt / Equity"]),
         "Market Cap": _safe(record["Market Cap"]),
-        "Evidence": "Provider-backed reported debt/equity",
     },
     "💸 Valuation": {
         "P/E": _safe(record["P/E"]),
@@ -277,11 +310,8 @@ reasons = [
     f"earnings CAGR: {_safe(record['Earnings CAGR'], '%')}.",
     f"ROE: {_safe(record['ROE'], '%')}; "
     f"debt/equity: {_safe(record['Debt / Equity'])}.",
-    "Free cash flow is positive in the latest reported period."
-    if record["FCF Positive"]
-    else "Latest reported free cash flow is not positive.",
-    f"Peer valuation: P/E {_safe(record['P/E'])}, "
-    f"P/B {_safe(record['P/B'])}.",
+    f"FCF consistency across reported periods: {_safe(record['FCF Consistency'], '%')}.",
+    f"Peer valuation: P/E {_safe(record['P/E'])}, P/B {_safe(record['P/B'])}.",
 ]
 for reason in reasons:
     st.write(f"• {reason}")
@@ -292,19 +322,23 @@ if record["Debt / Equity"] is not None and float(record["Debt / Equity"]) > 1.0:
     risks.append("Debt/equity is above 1.0 and deserves closer balance-sheet review.")
 if not record["FCF Positive"]:
     risks.append("Latest reported free cash flow is not positive.")
+if record["FCF Consistency"] is not None and float(record["FCF Consistency"]) < 60:
+    risks.append("Free cash flow is inconsistent across the reported periods.")
 if record["P/E"] is not None and float(record["P/E"]) > 40:
     risks.append("P/E is elevated relative to the scanned peer universe.")
+if record["ROE"] is None:
+    risks.append("ROE is unavailable from the verified provider.")
+if record["ROCE"] is None:
+    risks.append("ROCE is unavailable and is therefore not scored.")
 if not risks:
-    risks.append(
-        "No automatic red flag was triggered; deeper qualitative review is still required."
-    )
+    risks.append("No automatic red flag was triggered; deeper qualitative review is still required.")
 for risk in risks:
     st.write(f"• {risk}")
 
 st.markdown("## 🔴 Thesis Break Conditions")
 for item in (
     "Revenue or earnings growth deteriorates materially for sustained periods.",
-    "ROE falls materially without a clear reinvestment explanation.",
+    "ROE or ROCE falls materially without a clear reinvestment explanation.",
     "Debt rises faster than productive earnings capacity.",
     "Cash generation persistently diverges from reported profit.",
     "Material governance, regulatory or competitive concerns emerge.",
