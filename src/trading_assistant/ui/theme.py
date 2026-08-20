@@ -1,7 +1,5 @@
 """Shared responsive visual system for all Trading Assistant Streamlit pages."""
 
-from __future__ import annotations
-
 import streamlit as st
 
 
@@ -54,8 +52,14 @@ h3 { font-size: clamp(1.05rem, 1.5vw, 1.3rem) !important; }
   min-height: 92px;
 }
 
-[data-testid="stMetricLabel"] { color: var(--ta-muted) !important; font-size: clamp(.72rem, 1vw, .84rem) !important; }
-[data-testid="stMetricValue"] { color: var(--ta-text) !important; font-size: clamp(1.15rem, 2vw, 1.7rem) !important; }
+[data-testid="stMetricLabel"] {
+  color: var(--ta-muted) !important;
+  font-size: clamp(.72rem, 1vw, .84rem) !important;
+}
+[data-testid="stMetricValue"] {
+  color: var(--ta-text) !important;
+  font-size: clamp(1.15rem, 2vw, 1.7rem) !important;
+}
 
 .stButton > button, .stDownloadButton > button {
   border-radius: 10px;
