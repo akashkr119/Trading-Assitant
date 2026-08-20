@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timezone
 
 import pandas as pd
@@ -64,6 +65,7 @@ def _snapshot_row(snapshot: FundamentalsSnapshot) -> dict[str, object]:
     return {
         "Stock": snapshot.symbol.removesuffix(".NS"),
         "Company": snapshot.company_name,
+        "Sector": snapshot.sector or "Unknown",
         "Revenue CAGR": _cagr([p.revenue for p in periods]),
         "Earnings CAGR": _cagr(earnings_values),
         "FCF CAGR": _cagr(fcf_values),
@@ -88,108 +90,118 @@ def _bounded(value: float, low: float = 0.0, high: float = 100.0) -> float:
 
 
 def _score_rows(rows: list[dict[str, object]]) -> None:
-    pe_values = [
-        float(row["P/E"])
-        for row in rows
-        if row["P/E"] not in (None, 0) and float(row["P/E"]) > 0
-    ]
-    pb_values = [
-        float(row["P/B"])
-        for row in rows
-        if row["P/B"] not in (None, 0) and float(row["P/B"]) > 0
-    ]
-
-    def percentile(value: object, values: list[float]) -> float | None:
-        if value is None or not values:
-            return None
-        number = float(value)
-        return sum(item <= number for item in values) / len(values) * 100
-
+    by_sector: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in rows:
-        growth_values = [
-            float(value)
-            for value in (row["Revenue CAGR"], row["Earnings CAGR"])
-            if value is not None
+        by_sector[str(row["Sector"])].append(row)
+
+    for sector_rows in by_sector.values():
+        pe_values = [
+            float(row["P/E"])
+            for row in sector_rows
+            if row["P/E"] not in (None, 0) and float(row["P/E"]) > 0
         ]
-        growth = (
-            _bounded(sum(growth_values) / len(growth_values) * 3.0)
-            if growth_values
-            else None
-        )
-
-        return_values = [
-            float(value)
-            for value in (row["ROE"], row["ROCE"])
-            if value is not None
+        pb_values = [
+            float(row["P/B"])
+            for row in sector_rows
+            if row["P/B"] not in (None, 0) and float(row["P/B"]) > 0
         ]
-        profitability = (
-            _bounded(sum(return_values) / len(return_values) * 2.5)
-            if return_values
-            else None
-        )
 
-        debt = row["Debt / Equity"]
-        financial = None if debt is None else _bounded(100 - float(debt) * 40)
-        consistency = row["FCF Consistency"]
-        cash_quality = (
-            None
-            if consistency is None
-            else _bounded(float(consistency) * 0.7 + (30 if row["FCF Positive"] else 0))
-        )
+        def percentile(value: object, values: list[float]) -> float | None:
+            if value is None or not values:
+                return None
+            number = float(value)
+            return sum(item <= number for item in values) / len(values) * 100
 
-        pe_pct = percentile(row["P/E"], pe_values)
-        pb_pct = percentile(row["P/B"], pb_values)
-        valuation = None
-        if pe_pct is not None or pb_pct is not None:
-            percentiles = [value for value in (pe_pct, pb_pct) if value is not None]
-            row["Valuation Percentile"] = sum(percentiles) / len(percentiles)
-            valuation = 100 - float(row["Valuation Percentile"])
+        for row in sector_rows:
+            growth_values = [
+                float(value)
+                for value in (row["Revenue CAGR"], row["Earnings CAGR"])
+                if value is not None
+            ]
+            growth = (
+                _bounded(sum(growth_values) / len(growth_values) * 3.0)
+                if growth_values
+                else None
+            )
 
-        components = {
-            "growth": (growth, 0.30),
-            "profitability": (profitability, 0.25),
-            "financial": (financial, 0.20),
-            "cash": (cash_quality, 0.15),
-            "valuation": (valuation, 0.10),
-        }
-        available = [
-            (value, weight)
-            for value, weight in components.values()
-            if value is not None
-        ]
-        weight_total = sum(weight for _, weight in available)
-        score = (
-            sum(value * weight for value, weight in available) / weight_total
-            if weight_total
-            else 0
-        )
-        confidence = len(available) / len(components) * 100
-        row["Score"] = round(score, 1)
-        row["Confidence"] = round(confidence, 0)
+            return_values = [
+                float(value)
+                for value in (row["ROE"], row["ROCE"])
+                if value is not None
+            ]
+            profitability = (
+                _bounded(sum(return_values) / len(return_values) * 2.5)
+                if return_values
+                else None
+            )
 
-        if confidence < 60:
-            row["Classification"] = "Insufficient Evidence"
-        elif score >= 75:
-            row["Classification"] = "Strong Long-Term Candidate"
-        elif score >= 60:
-            row["Classification"] = "Watchlist"
-        elif valuation is not None and valuation < 25:
-            row["Classification"] = "High Valuation / Risk"
-        else:
-            row["Classification"] = "Weak Fundamentals"
+            debt = row["Debt / Equity"]
+            financial = None if debt is None else _bounded(100 - float(debt) * 40)
+            consistency = row["FCF Consistency"]
+            cash_quality = (
+                None
+                if consistency is None
+                else _bounded(
+                    float(consistency) * 0.7
+                    + (30 if row["FCF Positive"] else 0)
+                )
+            )
+
+            pe_pct = percentile(row["P/E"], pe_values)
+            pb_pct = percentile(row["P/B"], pb_values)
+            valuation = None
+            if pe_pct is not None or pb_pct is not None:
+                percentiles = [
+                    value for value in (pe_pct, pb_pct) if value is not None
+                ]
+                row["Valuation Percentile"] = sum(percentiles) / len(percentiles)
+                valuation = 100 - float(row["Valuation Percentile"])
+
+            components = {
+                "growth": (growth, 0.30),
+                "profitability": (profitability, 0.25),
+                "financial": (financial, 0.20),
+                "cash": (cash_quality, 0.15),
+                "valuation": (valuation, 0.10),
+            }
+            available = [
+                (value, weight)
+                for value, weight in components.values()
+                if value is not None
+            ]
+            weight_total = sum(weight for _, weight in available)
+            score = (
+                sum(value * weight for value, weight in available) / weight_total
+                if weight_total
+                else 0
+            )
+            confidence = len(available) / len(components) * 100
+            row["Score"] = round(score, 1)
+            row["Confidence"] = round(confidence, 0)
+
+            if confidence < 60:
+                row["Classification"] = "Insufficient Evidence"
+            elif score >= 75:
+                row["Classification"] = "Strong Long-Term Candidate"
+            elif score >= 60:
+                row["Classification"] = "Watchlist"
+            elif valuation is not None and valuation < 25:
+                row["Classification"] = "High Valuation / Risk"
+            else:
+                row["Classification"] = "Weak Fundamentals"
 
 
 st.subheader("🔎 Fundamental Stock Scanner")
-scan_col, count_col = st.columns([3, 1])
+scan_col, status_col = st.columns([3, 1])
 with scan_col:
     scan_clicked = st.button(
-        "🔎 Scan NSE Long-Term Opportunities",
+        "🔎 Scan NSE Long-Term Universe",
         type="primary",
         use_container_width=True,
         disabled=not provider_available,
     )
-with count_col:
-    scan_count = st.selectbox("Stocks", [5, 10], index=1)
+with status_col:
+    st.metric("Universe", len(DEFAULT_NSE_LONG_TERM_UNIVERSE))
 
 if not provider_available:
     st.info(
@@ -200,8 +212,10 @@ if not provider_available:
 if scan_clicked:
     rows: list[dict[str, object]] = []
     errors: dict[str, str] = {}
-    with st.spinner("Fetching verified financial statements and valuation data..."):
-        for symbol in DEFAULT_NSE_LONG_TERM_UNIVERSE[:scan_count]:
+    with st.spinner(
+        f"Fetching verified fundamentals for {len(DEFAULT_NSE_LONG_TERM_UNIVERSE)} stocks..."
+    ):
+        for symbol in DEFAULT_NSE_LONG_TERM_UNIVERSE:
             try:
                 snapshot = provider.get_fundamentals(symbol)
                 if not snapshot.has_required_financial_history(3):
@@ -214,16 +228,22 @@ if scan_clicked:
             except Exception as error:
                 errors[symbol] = str(error)
     _score_rows(rows)
-    rows.sort(key=lambda row: float(row["Score"]), reverse=True)
+    rows.sort(
+        key=lambda row: (
+            str(row["Sector"]),
+            -float(row["Score"]),
+            -float(row["Confidence"]),
+        )
+    )
     st.session_state.long_term_candidates = rows
     st.session_state.long_term_errors = errors
 
-watchlist = st.session_state.get("long_term_candidates", [])
+all_rows = st.session_state.get("long_term_candidates", [])
 errors = st.session_state.get("long_term_errors", {})
 
-if not watchlist:
+if not all_rows:
     if provider_available:
-        st.info("No scan has been run yet. Click **Scan NSE Long-Term Opportunities**.")
+        st.info("No scan has been run yet. Click **Scan NSE Long-Term Universe**.")
     else:
         st.info("No fundamental candidates are shown without a verified data provider.")
     if errors:
@@ -232,31 +252,58 @@ if not watchlist:
                 st.warning(f"{symbol}: {error}")
     st.stop()
 
+sector_groups: dict[str, list[dict[str, object]]] = defaultdict(list)
+for row in all_rows:
+    sector_groups[str(row["Sector"])].append(row)
+
+watchlist: list[dict[str, object]] = []
+for sector in sorted(sector_groups):
+    sector_rows = sorted(
+        sector_groups[sector],
+        key=lambda row: (-float(row["Score"]), -float(row["Confidence"]), row["Stock"]),
+    )
+    for rank, row in enumerate(sector_rows[:10], 1):
+        row["Sector Rank"] = rank
+        watchlist.append(row)
+
 st.success(
-    f"Verified fundamentals loaded for {len(watchlist)} stocks · "
-    "data source: Yahoo Finance via yfinance"
+    f"Verified fundamentals loaded for {len(all_rows)} stocks · "
+    f"showing top {min(10, max(len(rows) for rows in sector_groups.values()))} "
+    f"from each of {len(sector_groups)} sectors"
 )
 
 st.subheader("🏆 Long-Term Opportunity Board")
-display_rows = []
-for index, row in enumerate(watchlist, 1):
-    display_rows.append(
-        {
-            "Rank": index,
-            "Stock": row["Stock"],
-            "Company": row["Company"],
-            "Classification": row["Classification"],
-            "Score": f"{row['Score']:.1f}/100",
-            "Confidence": f"{row['Confidence']:.0f}%",
-            "Revenue CAGR": _safe(row["Revenue CAGR"], "%"),
-            "Earnings CAGR": _safe(row["Earnings CAGR"], "%"),
-            "ROE": _safe(row["ROE"], "%"),
-            "Debt / Equity": _safe(row["Debt / Equity"]),
-            "P/E": _safe(row["P/E"]),
-            "FCF": "Positive" if row["FCF Positive"] else "Negative",
-        }
-    )
-st.dataframe(display_rows, use_container_width=True, hide_index=True)
+st.caption(
+    "Rankings are calculated independently inside each sector. "
+    "Valuation percentiles also compare companies within the same sector."
+)
+
+for sector in sorted(sector_groups):
+    sector_rows = sorted(
+        sector_groups[sector],
+        key=lambda row: (-float(row["Score"]), -float(row["Confidence"]), row["Stock"]),
+    )[:10]
+    st.markdown(f"### 🏭 {sector} — Top {len(sector_rows)}")
+    display_rows = []
+    for row in sector_rows:
+        display_rows.append(
+            {
+                "Rank": row["Sector Rank"],
+                "Stock": row["Stock"],
+                "Company": row["Company"],
+                "Classification": row["Classification"],
+                "Score": f"{row['Score']:.1f}/100",
+                "Confidence": f"{row['Confidence']:.0f}%",
+                "Revenue CAGR": _safe(row["Revenue CAGR"], "%"),
+                "Earnings CAGR": _safe(row["Earnings CAGR"], "%"),
+                "ROE": _safe(row["ROE"], "%"),
+                "ROCE": _safe(row["ROCE"], "%"),
+                "Debt / Equity": _safe(row["Debt / Equity"]),
+                "P/E": _safe(row["P/E"]),
+                "FCF": "Positive" if row["FCF Positive"] else "Negative",
+            }
+        )
+    st.dataframe(display_rows, use_container_width=True, hide_index=True)
 
 symbols = [row["Stock"] for row in watchlist]
 selected = st.selectbox("🎯 Select a stock for complete examination", symbols)
@@ -267,20 +314,22 @@ periods = list(snapshot.periods)
 st.caption(
     f"Verified source: {snapshot.source} · snapshot time: "
     f"{snapshot.as_of.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
+    f"sector: {record['Sector']} · sector rank: {record['Sector Rank']} · "
     f"financial periods available: {len(periods)}"
 )
 
 st.markdown("## 📊 Complete Investment Examination")
 score_cols = st.columns(6)
-score_cols[0].metric("Score", f"{record['Score']:.1f}/100")
-score_cols[1].metric("Classification", record["Classification"])
-score_cols[2].metric("Confidence", f"{record['Confidence']:.0f}%")
-score_cols[3].metric("Revenue CAGR", _safe(record["Revenue CAGR"], "%"))
-score_cols[4].metric("Earnings CAGR", _safe(record["Earnings CAGR"], "%"))
+score_cols[0].metric("Sector Rank", f"#{record['Sector Rank']}")
+score_cols[1].metric("Score", f"{record['Score']:.1f}/100")
+score_cols[2].metric("Classification", record["Classification"])
+score_cols[3].metric("Confidence", f"{record['Confidence']:.0f}%")
+score_cols[4].metric("Revenue CAGR", _safe(record["Revenue CAGR"], "%"))
 score_cols[5].metric("ROE", _safe(record["ROE"], "%"))
 
 sections = {
     "🏢 Business & Growth": {
+        "Sector": str(record["Sector"]),
         "Revenue CAGR": _safe(record["Revenue CAGR"], "%"),
         "Earnings CAGR": _safe(record["Earnings CAGR"], "%"),
         "FCF CAGR": _safe(record["FCF CAGR"], "%"),
@@ -305,7 +354,7 @@ sections = {
         "P/E": _safe(record["P/E"]),
         "P/B": _safe(record["P/B"]),
         "EV / EBITDA": _safe(record["EV / EBITDA"]),
-        "Peer percentile": _safe(record["Valuation Percentile"]),
+        "Sector percentile": _safe(record["Valuation Percentile"]),
     },
     "🏆 Moat / Management / Governance": {
         "Status": "Not scored without verified provider evidence",
@@ -323,12 +372,13 @@ for title, values in sections.items():
 
 st.markdown("## 🔬 Why the Tool Is Suggesting This Stock")
 reasons = [
+    f"Sector rank #{record['Sector Rank']} in {record['Sector']}; score {record['Score']:.1f}/100.",
     f"Revenue CAGR: {_safe(record['Revenue CAGR'], '%')}; "
     f"earnings CAGR: {_safe(record['Earnings CAGR'], '%')}.",
     f"ROE: {_safe(record['ROE'], '%')}; "
     f"debt/equity: {_safe(record['Debt / Equity'])}.",
     f"FCF consistency across reported periods: {_safe(record['FCF Consistency'], '%')}.",
-    f"Peer valuation: P/E {_safe(record['P/E'])}, P/B {_safe(record['P/B'])}.",
+    f"Sector valuation: P/E {_safe(record['P/E'])}, P/B {_safe(record['P/B'])}.",
 ]
 for reason in reasons:
     st.write(f"• {reason}")
@@ -342,7 +392,7 @@ if not record["FCF Positive"]:
 if record["FCF Consistency"] is not None and float(record["FCF Consistency"]) < 60:
     risks.append("Free cash flow is inconsistent across the reported periods.")
 if record["P/E"] is not None and float(record["P/E"]) > 40:
-    risks.append("P/E is elevated relative to the scanned peer universe.")
+    risks.append("P/E is elevated relative to the scanned sector peers.")
 if record["ROE"] is None:
     risks.append("ROE is unavailable from the verified provider.")
 if record["ROCE"] is None:
