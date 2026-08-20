@@ -62,7 +62,10 @@ def decide_trade(context: TradeContext, direction: str) -> TradeDecision:
 
     if context.high_volatility or not context.timeframe_aligned:
         if context.setup_score >= 80 and context.risk_reward >= 2.0:
-            reasons.append("Setup is strong enough to remain under review, but confirmation is required.")
+            reasons.append(
+                "Setup is strong enough to remain under review, "
+                "but confirmation is required."
+            )
             return TradeDecision(TradeState.WAIT, round(score, 1), tuple(reasons))
         return TradeDecision(TradeState.NO_TRADE, round(score, 1), tuple(reasons))
 
