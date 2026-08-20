@@ -40,10 +40,19 @@ class LongTermAssessment:
 
 def assess_long_term(metrics: LongTermMetrics) -> LongTermAssessment:
     """Score a company from supplied evidence; never invent missing fundamentals."""
-    growth = min(100.0, max(0.0, metrics.revenue_cagr * 2.5 + metrics.earnings_cagr * 1.5))
-    profitability = min(100.0, max(0.0, metrics.roce * 2.2 + metrics.roe * 0.5))
+    growth = min(
+        100.0,
+        max(0.0, metrics.revenue_cagr * 2.5 + metrics.earnings_cagr * 1.5),
+    )
+    profitability = min(
+        100.0,
+        max(0.0, metrics.roce * 2.2 + metrics.roe * 0.5),
+    )
     financial = min(100.0, max(0.0, 100 - metrics.debt_to_equity * 35))
-    cash_flow = min(100.0, max(0.0, (60 if metrics.fcf_positive else 25) + metrics.cash_conversion * 40))
+    cash_flow = min(
+        100.0,
+        max(0.0, (60 if metrics.fcf_positive else 25) + metrics.cash_conversion * 40),
+    )
     valuation = min(100.0, max(0.0, 100 - metrics.valuation_percentile))
     risk = min(100.0, max(0.0, 100 - metrics.governance_risk))
     score = round(
@@ -58,12 +67,22 @@ def assess_long_term(metrics: LongTermMetrics) -> LongTermAssessment:
         + risk * 0.04,
         1,
     )
-    verdict = "STRONG LONG-TERM CANDIDATE" if score >= 80 else "WATCHLIST" if score >= 65 else "HIGH RISK / AVOID"
+    if score >= 80:
+        verdict = "STRONG LONG-TERM CANDIDATE"
+    elif score >= 65:
+        verdict = "WATCHLIST"
+    else:
+        verdict = "HIGH RISK / AVOID"
     reasons = (
-        f"Revenue CAGR is {metrics.revenue_cagr:.1f}% and earnings CAGR is {metrics.earnings_cagr:.1f}%.",
-        f"ROCE is {metrics.roce:.1f}% and the runway score is {metrics.runway_score:.0f}/100.",
-        f"Moat score is {metrics.moat_score:.0f}/100 and management score is {metrics.management_score:.0f}/100.",
-        "Free cash flow is positive." if metrics.fcf_positive else "Free cash flow is not consistently positive.",
+        f"Revenue CAGR is {metrics.revenue_cagr:.1f}% and earnings CAGR is "
+        f"{metrics.earnings_cagr:.1f}%.",
+        f"ROCE is {metrics.roce:.1f}% and the runway score is "
+        f"{metrics.runway_score:.0f}/100.",
+        f"Moat score is {metrics.moat_score:.0f}/100 and management score is "
+        f"{metrics.management_score:.0f}/100.",
+        "Free cash flow is positive."
+        if metrics.fcf_positive
+        else "Free cash flow is not consistently positive.",
     )
     risks = (
         f"Debt/equity is {metrics.debt_to_equity:.2f}.",
