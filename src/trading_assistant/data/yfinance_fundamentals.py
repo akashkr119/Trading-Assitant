@@ -7,6 +7,8 @@ verified provider can replace it without changing the analysis layer.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import subprocess
+import sys
 
 import pandas as pd
 
@@ -21,25 +23,58 @@ class YFinanceFundamentalsProvider:
     """Fetch normalized company fundamentals from Yahoo Finance."""
 
     source = "Yahoo Finance via yfinance"
+    _bootstrap_attempted = False
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Return whether yfinance is importable, repairing the runtime once if needed."""
+        if cls._import_available():
+            return True
+        if cls._bootstrap_attempted:
+            return False
+        cls._bootstrap_attempted = True
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "yfinance>=0.2,<1",
+                    "--disable-pip-version-check",
+                    "--no-input",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return cls._import_available()
 
     @staticmethod
-    def is_available() -> bool:
-        """Return whether yfinance can be imported in the current runtime."""
+    def _import_available() -> bool:
         try:
             import yfinance  # noqa: F401
         except ImportError:
             return False
         return True
 
-    @staticmethod
-    def _client():
-        """Load yfinance lazily so the dashboard can start without it."""
+    @classmethod
+    def _client(cls):
+        """Load yfinance lazily and repair the runtime once if necessary."""
+        if not cls.is_available():
+            raise YFinanceUnavailableError(
+                "yfinance is unavailable in the current runtime. "
+                "Install the project dependencies and restart the application."
+            )
         try:
             import yfinance as yf
         except ImportError as error:
             raise YFinanceUnavailableError(
-                "yfinance is not installed in the current runtime. "
-                "Yahoo Finance fundamentals are unavailable."
+                "yfinance is unavailable in the current runtime. "
+                "Install the project dependencies and restart the application."
             ) from error
         return yf
 
