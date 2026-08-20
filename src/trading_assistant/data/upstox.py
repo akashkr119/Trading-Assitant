@@ -64,16 +64,33 @@ class UpstoxMarketDataProvider(MarketDataProvider):
         start: datetime,
         end: datetime,
     ) -> list[OHLCVBar]:
-        """Fetch candles for a date range using the V3 historical endpoint."""
+        """Fetch candles, using intraday data when the requested range is today."""
         if start.date() > end.date():
             raise ValueError("start must not be after end")
-        unit, interval = _INTERVALS[timeframe]
         instrument_key = self._instrument_key(symbol)
-        path = (
-            f"/historical-candle/{quote(instrument_key, safe='')}/"
-            f"{unit}/{interval}/{end.date()}/{start.date()}"
-        )
-        return self._parse_candles(self._request(path))
+        unit, interval = _INTERVALS[timeframe]
+        today = datetime.now(IST).date()
+
+        if (
+            timeframe != Timeframe.ONE_DAY
+            and start.date() == today
+            and end.date() == today
+        ):
+            path = (
+                f"/historical-candle/intraday/{quote(instrument_key, safe='')}/"
+                f"{unit}/{interval}"
+            )
+        else:
+            path = (
+                f"/historical-candle/{quote(instrument_key, safe='')}/"
+                f"{unit}/{interval}/{end.date()}/{start.date()}"
+            )
+        candles = self._parse_candles(self._request(path))
+        return [
+            candle
+            for candle in candles
+            if start <= candle.timestamp <= end
+        ]
 
     def get_latest_bar(self, symbol: str, timeframe: Timeframe) -> OHLCVBar:
         """Fetch the latest available candle."""
