@@ -14,11 +14,15 @@ from trading_assistant.data.yfinance_fundamentals import (
     YFinanceFundamentalsProvider,
     YFinanceUnavailableError,
 )
-from trading_assistant.ui.theme import apply_theme
+from trading_assistant.ui.theme import apply_theme, page_header, section_header
 
 st.set_page_config(page_title="Long-Term Investment", page_icon="🏆", layout="wide")
 apply_theme()
-st.title("🏆 Long-Term Investment")
+page_header(
+    "🏆 Long-Term Investment",
+    "Sector-relative fundamental research · growth · profitability · cash flow · valuation",
+    accent="gold",
+)
 st.caption(
     "Evidence-based NSE long-term research. Scores indicate thesis strength, "
     "not guaranteed returns."
@@ -186,7 +190,7 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
                 row["Classification"] = "Weak Fundamentals"
 
 
-st.subheader("🔎 Fundamental Stock Scanner")
+section_header("🔎 Fundamental Stock Scanner")
 scan_col, status_col = st.columns([3, 1])
 with scan_col:
     scan_clicked = st.button(
@@ -267,7 +271,7 @@ st.success(
     f"from each of {len(sector_groups)} sectors"
 )
 
-st.subheader("🏆 Long-Term Opportunity Board")
+section_header("🏆 Long-Term Opportunity Board")
 st.caption(
     "Rankings are calculated independently inside each sector. "
     "Valuation percentiles also compare companies within the same sector."
@@ -313,7 +317,7 @@ st.caption(
     f"financial periods available: {len(periods)}"
 )
 
-st.markdown("## 📊 Complete Investment Examination")
+section_header("📊 Complete Investment Examination")
 score_cols = st.columns(6)
 score_cols[0].metric("Sector Rank", f"#{record['Sector Rank']}")
 score_cols[1].metric("Score", f"{record['Score']:.1f}/100")
@@ -365,7 +369,7 @@ for title, values in sections.items():
         for column, (label, value) in zip(cols, values.items()):
             column.metric(label, value)
 
-st.markdown("## 🔬 Why the Tool Is Suggesting This Stock")
+section_header("🔬 Why the Tool Is Suggesting This Stock")
 reasons = [
     f"Sector rank #{record['Sector Rank']} in {record['Sector']}; score {record['Score']:.1f}/100.",
     f"Revenue CAGR: {_safe(record['Revenue CAGR'], '%')}; "
@@ -378,7 +382,7 @@ reasons = [
 for reason in reasons:
     st.write(f"• {reason}")
 
-st.markdown("## ⚠️ Risks / Reasons Not to Invest")
+section_header("⚠️ Risks / Reasons Not to Invest")
 risks = []
 if record["Debt / Equity"] is not None and float(record["Debt / Equity"]) > 1.0:
     risks.append("Debt/equity is above 1.0 and deserves closer balance-sheet review.")
@@ -399,7 +403,7 @@ if not risks:
 for risk in risks:
     st.write(f"• {risk}")
 
-st.markdown("## 🔴 Thesis Break Conditions")
+section_header("🔴 Thesis Break Conditions")
 for item in (
     "Revenue or earnings growth deteriorates materially for sustained periods.",
     "ROE or ROCE falls materially without a clear reinvestment explanation.",
@@ -414,7 +418,7 @@ if errors:
         for symbol, error in errors.items():
             st.warning(f"{symbol}: {error}")
 
-st.markdown("## 📌 Evidence Policy")
+section_header("📌 Evidence Policy")
 st.info(
     "Financial metrics come from the configured provider. Missing metrics are shown as "
     "N/A rather than guessed. Moat, management and governance are not scored until "
