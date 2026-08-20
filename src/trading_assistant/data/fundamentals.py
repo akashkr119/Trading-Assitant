@@ -26,7 +26,6 @@ class FundamentalsSnapshot:
 
     symbol: str
     company_name: str
-    sector: str | None
     as_of: datetime
     source: str
     periods: tuple[FinancialPeriod, ...]
@@ -37,6 +36,7 @@ class FundamentalsSnapshot:
     pe_ratio: float | None
     pb_ratio: float | None
     ev_to_ebitda: float | None
+    sector: str | None = None
 
     def has_required_financial_history(self, minimum_periods: int = 3) -> bool:
         """Return whether enough reported periods exist for long-term trend analysis."""
