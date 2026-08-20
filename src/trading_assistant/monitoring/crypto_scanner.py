@@ -53,11 +53,18 @@ class CryptoMarketSnapshot:
     rsi: float
     macd_histogram: float
     relative_volume: float
+    momentum_5bar_pct: float
     supertrend_direction: str
+    trend_5m: str
+    trend_15m: str
+    trend_1h: str
+    confluence: tuple[tuple[str, bool], ...]
     support_levels: tuple[float, ...]
     resistance_levels: tuple[float, ...]
     alert: str
     alert_reason: str
+    invalidation: str
+    reversal: str
     candidate: CryptoCandidate | None
 
 
@@ -122,11 +129,17 @@ class CryptoIntradayScanner:
                 symbol, Timeframe.FIFTEEN_MINUTES, start, timestamp
             )
         )
-        if len(bars_5m) < 60 or len(bars_15m) < 40:
+        bars_1h = list(
+            self.provider.get_ohlcv(
+                symbol, Timeframe.ONE_HOUR, start, timestamp
+            )
+        )
+        if len(bars_5m) < 60 or len(bars_15m) < 40 or len(bars_1h) < 30:
             raise ValueError("Insufficient candles for selected crypto pair")
 
         frame_5m = self._frame(bars_5m)
         frame_15m = self._frame(bars_15m)
+        frame_1h = self._frame(bars_1h)
         close = frame_5m["close"]
         price = float(close.iloc[-1])
         ema9 = float(ema(close, 9).iloc[-1])
@@ -134,19 +147,55 @@ class CryptoIntradayScanner:
         rsi_value = float(rsi(close, 14).iloc[-1])
         macd_histogram = float(macd(close)["histogram"].iloc[-1])
         rvol = float(relative_volume(frame_5m).iloc[-1])
-        trend_5m = self._trend_direction(frame_5m)
-        trend_15m = self._trend_direction(frame_15m)
+        momentum = float((close.iloc[-1] / close.iloc[-6] - 1.0) * 100.0)
+        trend_5m_value = self._trend_direction(frame_5m)
+        trend_15m_value = self._trend_direction(frame_15m)
+        trend_1h_value = self._trend_direction(frame_1h)
+        trend_5m = "BULLISH" if trend_5m_value > 0 else "BEARISH"
+        trend_15m = "BULLISH" if trend_15m_value > 0 else "BEARISH"
+        trend_1h = "BULLISH" if trend_1h_value > 0 else "BEARISH"
+
+        bullish = ema9 > ema20 and macd_histogram > 0
+        bearish = ema9 < ema20 and macd_histogram < 0
+        bullish_rsi = 50 <= rsi_value <= 75
+        bearish_rsi = 25 <= rsi_value <= 50
+        confluence = (
+            ("EMA 9/20", ema9 > ema20 if not bearish else ema9 < ema20),
+            ("MACD", macd_histogram > 0 if not bearish else macd_histogram < 0),
+            ("5m Supertrend", trend_5m_value > 0 if not bearish else trend_5m_value < 0),
+            ("15m Supertrend", trend_15m_value > 0 if not bearish else trend_15m_value < 0),
+            ("RSI entry zone", bullish_rsi if not bearish else bearish_rsi),
+            ("RVOL >= 1.0x", rvol >= 1.0),
+        )
+
         candidate = self._score(symbol, bars_5m, bars_15m)
-        if candidate is not None:
+        if candidate is not None and candidate.score >= 75:
             alert = "BUY ALERT" if candidate.direction == "LONG" else "SELL ALERT"
+            alert_reason = candidate.reason
+        elif candidate is not None:
+            alert = "NEAR SETUP"
             alert_reason = candidate.reason
         else:
             alert = "WATCH"
             alert_reason = self._watch_reason(
-                ema9, ema20, rsi_value, macd_histogram, trend_5m, trend_15m
+                ema9, ema20, rsi_value, macd_histogram, trend_5m_value, trend_15m_value
             )
 
         supports, resistances = self._support_resistance(frame_5m, price)
+        if candidate is not None:
+            invalidation = (
+                f"{candidate.direction} invalid if price closes beyond "
+                f"{candidate.stop_loss:.8g}"
+            )
+            opposite = "SHORT" if candidate.direction == "LONG" else "LONG"
+            reversal = (
+                f"Watch for {opposite} confirmation if 5m/15m trend flips and "
+                "MACD confirms the opposite direction."
+            )
+        else:
+            invalidation = "No active trade plan; wait for a confirmed setup."
+            reversal = "No active signal; reversal is evaluated after confirmation."
+
         return CryptoMarketSnapshot(
             symbol=symbol,
             timestamp=timestamp,
@@ -156,11 +205,18 @@ class CryptoIntradayScanner:
             rsi=rsi_value,
             macd_histogram=macd_histogram,
             relative_volume=rvol,
-            supertrend_direction="BULLISH" if trend_5m > 0 else "BEARISH",
+            momentum_5bar_pct=momentum,
+            supertrend_direction=trend_5m,
+            trend_5m=trend_5m,
+            trend_15m=trend_15m,
+            trend_1h=trend_1h,
+            confluence=confluence,
             support_levels=supports,
             resistance_levels=resistances,
             alert=alert,
             alert_reason=alert_reason,
+            invalidation=invalidation,
+            reversal=reversal,
             candidate=candidate,
         )
 
