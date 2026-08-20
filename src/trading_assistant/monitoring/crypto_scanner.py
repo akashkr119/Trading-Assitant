@@ -155,7 +155,6 @@ class CryptoIntradayScanner:
         trend_15m = "BULLISH" if trend_15m_value > 0 else "BEARISH"
         trend_1h = "BULLISH" if trend_1h_value > 0 else "BEARISH"
 
-        bullish = ema9 > ema20 and macd_histogram > 0
         bearish = ema9 < ema20 and macd_histogram < 0
         bullish_rsi = 50 <= rsi_value <= 75
         bearish_rsi = 25 <= rsi_value <= 50
