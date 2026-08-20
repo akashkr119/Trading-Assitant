@@ -6,7 +6,6 @@ from datetime import date
 
 import pandas as pd
 
-
 CALENDAR_URL = "https://www.iporise.com/calendar"
 
 
