@@ -21,42 +21,49 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          from textwrap import dedent
+          from textwrap import dedent, indent
+          import subprocess
 
-          p = Path('app.py')
-          s = p.read_text(encoding='utf-8')
+          subprocess.run(
+              ["git", "fetch", "origin", "master", "--depth=1"],
+              check=True,
+          )
+          subprocess.run(["git", "checkout", "origin/master", "--", "app.py"], check=True)
+
+          p = Path("app.py")
+          s = p.read_text(encoding="utf-8")
 
           diag = '''    if scanner is not None and scanner.last_scan_count:\n        with st.expander("🔧 Intraday scan diagnostics"):\n            diag_cols = st.columns(4)\n            diag_cols[0].metric("Stocks scanned", scanner.last_scan_count)\n            diag_cols[1].metric("Data received", scanner.last_data_count)\n            diag_cols[2].metric("Qualified", scanner.last_qualified_count)\n            diag_cols[3].metric("Data errors", len(scanner.last_scan_errors))\n            if scanner.last_scan_errors:\n                st.caption("The first 20 data errors are shown below.")\n                for failed_symbol, error in list(scanner.last_scan_errors.items())[:20]:\n                    st.warning(f"{failed_symbol}: {error}")\n'''
           if diag not in s:
-              raise SystemExit('diagnostics block missing or already migrated')
-          s = s.replace(diag, '', 1)
+              raise SystemExit("diagnostics block missing")
+          s = s.replace(diag, "", 1)
 
           a = s.index('    st.divider()\n    st.subheader("📅 Swing Trading Scanner")\n')
           b = s.index('\n\ndef _pnl_percent(direction: str, entry: float, price: float) -> float:\n', a)
-          swing = dedent(s[a:b])
+          swing = dedent(s[a:b]).strip("\n")
           s = s[:a] + s[b:]
 
-          s = s.replace('''status_col, market_col, watch_col, signal_col = st.columns(4)\nwith status_col:\n    st.metric("Broker", "Connected" if connected else "Disconnected")\nwith market_col:\n    st.metric("NSE Market", "OPEN" if market_open else "CLOSED")\nwith watch_col:\n    st.metric("Selected", len(symbols))\nwith signal_col:\n    st.metric("Active Signals", len(st.session_state.results))''', '''status_rows = [\n    (("Broker", "Connected" if connected else "Disconnected"), ("NSE Market", "OPEN" if market_open else "CLOSED")),\n    (("Selected", len(symbols)), ("Active Signals", len(st.session_state.results))),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for i, (label, value) in enumerate(status_row):\n        status_cols[i].metric(label, value)''', 1)
+          status_old = '''status_col, market_col, watch_col, signal_col = st.columns(4)\nwith status_col:\n    st.metric("Broker", "Connected" if connected else "Disconnected")\nwith market_col:\n    st.metric("NSE Market", "OPEN" if market_open else "CLOSED")\nwith watch_col:\n    st.metric("Selected", len(symbols))\nwith signal_col:\n    st.metric("Active Signals", len(st.session_state.results))'''
+          status_new = '''status_rows = [\n    (("Broker", "Connected" if connected else "Disconnected"), ("NSE Market", "OPEN" if market_open else "CLOSED")),\n    (("Selected", len(symbols)), ("Active Signals", len(st.session_state.results))),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for i, (label, value) in enumerate(status_row):\n        status_cols[i].metric(label, value)'''
+          s = s.replace(status_old, status_new, 1)
 
-          s = s.replace('''cols = st.columns(7)\n    cols[0].metric("Current Price", f"₹{snapshot['price']:.2f}")\n    cols[1].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")\n    cols[2].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")\n    cols[3].metric("RSI", f"{snapshot['rsi']:.1f}")\n    cols[4].metric("MACD Hist", f"{snapshot['macd']:.4f}")\n    cols[5].metric("RVOL", f"{snapshot['rvol']:.2f}x")\n    cols[6].metric("Supertrend", str(snapshot['supertrend']))''', '''metric_rows = [\n        (("Current Price", f"₹{snapshot['price']:.2f}"), ("EMA 9", f"₹{snapshot['ema9']:.2f}")),\n        (("EMA 20", f"₹{snapshot['ema20']:.2f}"), ("RSI", f"{snapshot['rsi']:.1f}")),\n        (("MACD Hist", f"{snapshot['macd']:.4f}"), ("RVOL", f"{snapshot['rvol']:.2f}x")),\n        (("Supertrend", str(snapshot['supertrend'])),),\n    ]\n    for metric_row in metric_rows:\n        metric_cols = st.columns(2)\n        for i, (label, value) in enumerate(metric_row):\n            metric_cols[i].metric(label, value)''', 1)
-
-          s = s.replace('''plan_cols = st.columns(6)\n        plan_cols[0].metric("Alert Price", f"₹{active_alert.entry:.2f}")\n        plan_cols[1].metric("Stop Loss", f"₹{active_alert.stop_loss:.2f}")\n        plan_cols[2].metric("Target 1", f"₹{active_alert.target_1:.2f}")\n        plan_cols[3].metric("Target 2", f"₹{active_alert.target_2:.2f}")\n        plan_cols[4].metric("Risk : Reward", f"1:{active_alert.risk_reward:.1f}")''', '''plan_rows = [\n            (("Alert Price", f"₹{active_alert.entry:.2f}"), ("Stop Loss", f"₹{active_alert.stop_loss:.2f}")),\n            (("Target 1", f"₹{active_alert.target_1:.2f}"), ("Target 2", f"₹{active_alert.target_2:.2f}")),\n            (("Risk : Reward", f"1:{active_alert.risk_reward:.1f}"),),\n        ]\n        for plan_row in plan_rows:\n            plan_cols = st.columns(2)\n            for i, (label, value) in enumerate(plan_row):\n                plan_cols[i].metric(label, value)''', 1)
-          s = s.replace('        plan_cols[5].metric("Current P/L", f"{pnl:+.2f}%")', '        st.metric("Current P/L", f"{pnl:+.2f}%")', 1)
-
-          s = s.replace('''metric_cols = st.columns(4)\n                    metric_cols[0].metric("Entry", f"₹{risk.entry:.2f}")\n                    metric_cols[1].metric("Stop", f"₹{risk.stop_loss:.2f}")\n                    metric_cols[2].metric("Target 1", f"₹{risk.target_1:.2f}")\n                    metric_cols[3].metric("Target 2", f"₹{risk.target_2:.2f}")''', '''risk_rows = [\n                        (("Entry", f"₹{risk.entry:.2f}"), ("Stop", f"₹{risk.stop_loss:.2f}")),\n                        (("Target 1", f"₹{risk.target_1:.2f}"), ("Target 2", f"₹{risk.target_2:.2f}")),\n                    ]\n                    for risk_row in risk_rows:\n                        metric_cols = st.columns(2)\n                        for i, (label, value) in enumerate(risk_row):\n                            metric_cols[i].metric(label, value)''', 1)
+          metrics_old = '''cols = st.columns(7)\n    cols[0].metric("Current Price", f"₹{snapshot['price']:.2f}")\n    cols[1].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")\n    cols[2].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")\n    cols[3].metric("RSI", f"{snapshot['rsi']:.1f}")\n    cols[4].metric("MACD Hist", f"{snapshot['macd']:.4f}")\n    cols[5].metric("RVOL", f"{snapshot['rvol']:.2f}x")\n    cols[6].metric("Supertrend", str(snapshot['supertrend']))'''
+          metrics_new = '''metric_rows = [\n        (("Current Price", f"₹{snapshot['price']:.2f}"), ("EMA 9", f"₹{snapshot['ema9']:.2f}")),\n        (("EMA 20", f"₹{snapshot['ema20']:.2f}"), ("RSI", f"{snapshot['rsi']:.1f}")),\n        (("MACD Hist", f"{snapshot['macd']:.4f}"), ("RVOL", f"{snapshot['rvol']:.2f}x")),\n        (("Supertrend", str(snapshot['supertrend'])),),\n    ]\n    for metric_row in metric_rows:\n        metric_cols = st.columns(2)\n        for i, (label, value) in enumerate(metric_row):\n            metric_cols[i].metric(label, value)'''
+          s = s.replace(metrics_old, metrics_new, 1)
 
           marker = 'live_panel()\n\nst.divider()\n'
           if marker not in s:
-              raise SystemExit('live panel insertion point missing')
+              raise SystemExit("live panel insertion point missing")
+          swing_block = "if connected:\n" + indent(swing, "    ") + "\n\n"
           s = s.replace(
               marker,
-              'live_panel()\n\n' + diag + '\n' + swing + '\nst.divider()\n',
+              "live_panel()\n\n" + diag + "\n" + swing_block + "st.divider()\n",
               1,
           )
 
-          p.write_text(s, encoding='utf-8')
+          p.write_text(s, encoding="utf-8")
 
-      - name: Validate
+      - name: Validate syntax
         run: python -m py_compile app.py
 
       - name: Commit migration
