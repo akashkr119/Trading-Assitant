@@ -9,9 +9,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pandas as pd
-import yfinance as yf
 
 from trading_assistant.data.fundamentals import FinancialPeriod, FundamentalsSnapshot
+
+
+class YFinanceUnavailableError(RuntimeError):
+    """Raised when the optional Yahoo Finance dependency is unavailable."""
 
 
 class YFinanceFundamentalsProvider:
@@ -19,7 +22,30 @@ class YFinanceFundamentalsProvider:
 
     source = "Yahoo Finance via yfinance"
 
+    @staticmethod
+    def is_available() -> bool:
+        """Return whether yfinance can be imported in the current runtime."""
+        try:
+            import yfinance  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    @staticmethod
+    def _client():
+        """Load yfinance lazily so the dashboard can start without it."""
+        try:
+            import yfinance as yf
+        except ImportError as error:
+            raise YFinanceUnavailableError(
+                "yfinance is not installed in the current runtime. "
+                "Yahoo Finance fundamentals are unavailable."
+            ) from error
+        return yf
+
     def get_fundamentals(self, symbol: str) -> FundamentalsSnapshot:
+        """Fetch one company's fundamentals or raise a provider error."""
+        yf = self._client()
         ticker = yf.Ticker(symbol)
         info = ticker.info
         income = ticker.financials
@@ -73,7 +99,11 @@ class YFinanceFundamentalsProvider:
         for column in columns:
             period_end = pd.Timestamp(column).date()
             revenue = cls._value(income, ("Total Revenue", "Operating Revenue"), column)
-            earnings = cls._value(income, ("Net Income", "Net Income Common Stockholders"), column)
+            earnings = cls._value(
+                income,
+                ("Net Income", "Net Income Common Stockholders"),
+                column,
+            )
             eps = cls._value(income, ("Diluted EPS", "Basic EPS"), column)
             operating_cash_flow = cls._value(
                 cashflow,
@@ -86,7 +116,11 @@ class YFinanceFundamentalsProvider:
                 ("Total Debt", "Long Term Debt And Capital Lease Obligation"),
                 column,
             )
-            equity = cls._value(balance, ("Stockholders Equity", "Common Stock Equity"), column)
+            equity = cls._value(
+                balance,
+                ("Stockholders Equity", "Common Stock Equity"),
+                column,
+            )
             periods.append(
                 FinancialPeriod(
                     period_end=period_end,
