@@ -96,6 +96,7 @@ class YFinanceFundamentalsProvider:
         return FundamentalsSnapshot(
             symbol=symbol,
             company_name=str(info.get("longName") or info.get("shortName") or symbol),
+            sector=str(info.get("sector") or "Unknown"),
             as_of=datetime.now(timezone.utc),
             source=self.source,
             periods=periods,
