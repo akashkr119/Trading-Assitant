@@ -9,7 +9,10 @@ import streamlit as st
 
 from trading_assistant.data.fundamentals import FundamentalsSnapshot
 from trading_assistant.data.nse_universe import DEFAULT_NSE_LONG_TERM_UNIVERSE
-from trading_assistant.data.yfinance_fundamentals import YFinanceFundamentalsProvider
+from trading_assistant.data.yfinance_fundamentals import (
+    YFinanceFundamentalsProvider,
+    YFinanceUnavailableError,
+)
 
 st.set_page_config(page_title="Long-Term Investment", page_icon="🏆", layout="wide")
 st.title("🏆 Long-Term Investment")
@@ -19,6 +22,19 @@ st.caption(
 )
 
 provider = YFinanceFundamentalsProvider()
+provider_available = provider.is_available()
+
+if not provider_available:
+    st.warning(
+        "🟡 Verified fundamentals are temporarily unavailable. Yahoo Finance's "
+        "yfinance package is not installed in the current runtime. "
+        "No investment score will be generated from missing data."
+    )
+    st.info(
+        "The dashboard remains available, but financial metrics will stay N/A until "
+        "a verified fundamentals provider is available. Rebuilding the environment "
+        "with the project's dependencies enables Yahoo Finance again."
+    )
 
 
 def _cagr(values: list[float | None], periods: int = 3) -> float | None:
@@ -123,6 +139,7 @@ with scan_col:
         "🔎 Scan NSE Long-Term Opportunities",
         type="primary",
         use_container_width=True,
+        disabled=not provider_available,
     )
 with count_col:
     scan_count = st.selectbox("Stocks", [5, 10], index=1)
@@ -138,6 +155,9 @@ if scan_clicked:
                     errors[symbol] = "Fewer than 3 complete revenue/earnings periods"
                     continue
                 rows.append(_snapshot_row(snapshot))
+            except YFinanceUnavailableError as error:
+                errors[symbol] = str(error)
+                break
             except Exception as error:
                 errors[symbol] = str(error)
     _score_rows(rows)
@@ -149,10 +169,16 @@ watchlist = st.session_state.get("long_term_candidates", [])
 errors = st.session_state.get("long_term_errors", {})
 
 if not watchlist:
-    st.info(
-        "No scan has been run yet. Click **Scan NSE Long-Term Opportunities** to fetch "
-        "verified financial statements from Yahoo Finance via yfinance."
-    )
+    if provider_available:
+        st.info(
+            "No scan has been run yet. Click **Scan NSE Long-Term Opportunities** "
+            "to fetch verified financial statements."
+        )
+    else:
+        st.info(
+            "No fundamental candidates are shown because there is no verified "
+            "fundamentals provider available in this runtime."
+        )
     if errors:
         with st.expander("🔧 Data diagnostics"):
             for symbol, error in errors.items():
