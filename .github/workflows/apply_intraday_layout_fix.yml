@@ -1,0 +1,120 @@
+name: Apply intraday layout fix
+
+on:
+  push:
+    branches:
+      - fix/intraday-responsive-layout
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reorder dashboard and improve mobile layout
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app.py")
+          text = path.read_text(encoding="utf-8")
+
+          diagnostics = '''    if scanner is not None and scanner.last_scan_count:\n        with st.expander("🔧 Intraday scan diagnostics"):\n            diag_cols = st.columns(4)\n            diag_cols[0].metric("Stocks scanned", scanner.last_scan_count)\n            diag_cols[1].metric("Data received", scanner.last_data_count)\n            diag_cols[2].metric("Qualified", scanner.last_qualified_count)\n            diag_cols[3].metric("Data errors", len(scanner.last_scan_errors))\n            if scanner.last_scan_errors:\n                st.caption("The first 20 data errors are shown below.")\n                for failed_symbol, error in list(scanner.last_scan_errors.items())[:20]:\n                    st.warning(f"{failed_symbol}: {error}")\n'''
+
+          swing_start = '    st.divider()\n    st.subheader("📅 Swing Trading Scanner")\n'
+          swing_end = '\n\ndef _pnl_percent(direction: str, entry: float, price: float) -> float:\n'
+
+          if diagnostics not in text:
+              raise SystemExit("intraday diagnostics block not found")
+          text = text.replace(diagnostics, "", 1)
+
+          swing_begin = text.find(swing_start)
+          if swing_begin < 0:
+              raise SystemExit("swing block start not found")
+          swing_finish = text.find(swing_end, swing_begin)
+          if swing_finish < 0:
+              raise SystemExit("swing block end not found")
+          swing_block = text[swing_begin:swing_finish]
+          text = text[:swing_begin] + text[swing_finish:]
+
+          old_slot = '    intraday_live_slot = st.empty()\n'
+          if old_slot not in text:
+              raise SystemExit("intraday live slot not found")
+
+          # Keep the slot, but render the selected live analysis before every swing section.
+          replacement = old_slot + '\n'
+          text = text.replace(old_slot, replacement, 1)
+
+          selected_panel_marker = 'if connected and st.session_state.nse_intraday_selected:\n    with intraday_live_slot.container():\n        selected_nse_intraday_panel()\n\n'
+          if selected_panel_marker not in text:
+              raise SystemExit("selected intraday panel marker not found")
+
+          # Move scanner diagnostics to the end of the intraday area, then put Swing last.
+          swing_insert = (
+              diagnostics
+              + '\n'
+              + 'if connected:\n'
+              + swing_block
+          )
+
+          text = text.replace(
+              'live_panel()\n\nst.divider()\n',
+              'live_panel()\n\n' + swing_insert + '\nst.divider()\n',
+              1,
+          )
+
+          # Mobile-safe metric layout: avoid 7/6/4 columns that compress into truncated values.
+          text = text.replace(
+              'cols = st.columns(7)\n    cols[0].metric("Current Price", f"₹{snapshot[\'price\']:.2f}")\n    cols[1].metric("EMA 9", f"₹{snapshot[\'ema9\']:.2f}")\n    cols[2].metric("EMA 20", f"₹{snapshot[\'ema20\']:.2f}")\n    cols[3].metric("RSI", f"{snapshot[\'rsi\']:.1f}")\n    cols[4].metric("MACD Hist", f"{snapshot[\'macd\']:.4f}")\n    cols[5].metric("RVOL", f"{snapshot[\'rvol\']:.2f}x")\n    cols[6].metric("Supertrend", str(snapshot[\'supertrend\']))',
+              'metric_rows = [\n        (("Current Price", f"₹{snapshot[\'price\']:.2f}"), ("EMA 9", f"₹{snapshot[\'ema9\']:.2f}")),\n        (("EMA 20", f"₹{snapshot[\'ema20\']:.2f}"), ("RSI", f"{snapshot[\'rsi\']:.1f}")),\n        (("MACD Hist", f"{snapshot[\'macd\']:.4f}"), ("RVOL", f"{snapshot[\'rvol\']:.2f}x")),\n        (("Supertrend", str(snapshot["supertrend"])),),\n    ]\n    for metric_row in metric_rows:\n        metric_cols = st.columns(2)\n        for index, (label, value) in enumerate(metric_row):\n            metric_cols[index].metric(label, value)',
+              1,
+          )
+
+          text = text.replace(
+              'plan_cols = st.columns(6)\n        plan_cols[0].metric("Alert Price", f"₹{active_alert.entry:.2f}")\n        plan_cols[1].metric("Stop Loss", f"₹{active_alert.stop_loss:.2f}")\n        plan_cols[2].metric("Target 1", f"₹{active_alert.target_1:.2f}")\n        plan_cols[3].metric("Target 2", f"₹{active_alert.target_2:.2f}")\n        plan_cols[4].metric("Risk : Reward", f"1:{active_alert.risk_reward:.1f}")',
+              'plan_rows = [\n            (("Alert Price", f"₹{active_alert.entry:.2f}"), ("Stop Loss", f"₹{active_alert.stop_loss:.2f}")),\n            (("Target 1", f"₹{active_alert.target_1:.2f}"), ("Target 2", f"₹{active_alert.target_2:.2f}")),\n            (("Risk : Reward", f"1:{active_alert.risk_reward:.1f}"),),\n        ]\n        for plan_row in plan_rows:\n            plan_cols = st.columns(2)\n            for index, (label, value) in enumerate(plan_row):\n                plan_cols[index].metric(label, value)',
+              1,
+          )
+          text = text.replace('        plan_cols[5].metric("Current P/L", f"{pnl:+.2f}%")', '        st.metric("Current P/L", f"{pnl:+.2f}%")', 1)
+
+          text = text.replace(
+              'metric_cols = st.columns(4)\n                    metric_cols[0].metric("Entry", f"₹{risk.entry:.2f}")\n                    metric_cols[1].metric("Stop", f"₹{risk.stop_loss:.2f}")\n                    metric_cols[2].metric("Target 1", f"₹{risk.target_1:.2f}")\n                    metric_cols[3].metric("Target 2", f"₹{risk.target_2:.2f}")',
+              'metric_rows = [\n                        (("Entry", f"₹{risk.entry:.2f}"), ("Stop", f"₹{risk.stop_loss:.2f}")),\n                        (("Target 1", f"₹{risk.target_1:.2f}"), ("Target 2", f"₹{risk.target_2:.2f}")),\n                    ]\n                    for metric_row in metric_rows:\n                        metric_cols = st.columns(2)\n                        for index, (label, value) in enumerate(metric_row):\n                            metric_cols[index].metric(label, value)',
+              1,
+          )
+
+          # The top status strip is also reduced to two columns per row for narrow screens.
+          text = text.replace(
+              'status_col, market_col, watch_col, signal_col = st.columns(4)\nwith status_col:\n    st.metric("Broker", "Connected" if connected else "Disconnected")\nwith market_col:\n    st.metric("NSE Market", "OPEN" if market_open else "CLOSED")\nwith watch_col:\n    st.metric("Selected", len(symbols))\nwith signal_col:\n    st.metric("Active Signals", len(st.session_state.results))',
+              'status_rows = [\n    (("Broker", "Connected" if connected else "Disconnected"), ("NSE Market", "OPEN" if market_open else "CLOSED")),\n    (("Selected", len(symbols)), ("Active Signals", len(st.session_state.results))),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for index, (label, value) in enumerate(status_row):\n        status_cols[index].metric(label, value)',
+              1,
+          )
+
+          path.write_text(text, encoding="utf-8")
+          print("Updated app.py")
+
+      - name: Validate Python syntax
+        run: python -m py_compile app.py
+
+      - name: Commit generated fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: make intraday dashboard responsive and keep swing last"
+          git push
+
+      - name: Remove temporary workflow
+        if: success()
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply_intraday_layout_fix.yml
+          git add -u .github/workflows/apply_intraday_layout_fix.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: remove temporary layout migration"
+          git push
