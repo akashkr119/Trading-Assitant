@@ -14,8 +14,10 @@ from trading_assistant.data.yfinance_fundamentals import (
     YFinanceFundamentalsProvider,
     YFinanceUnavailableError,
 )
+from trading_assistant.ui.theme import apply_theme
 
 st.set_page_config(page_title="Long-Term Investment", page_icon="🏆", layout="wide")
+apply_theme()
 st.title("🏆 Long-Term Investment")
 st.caption(
     "Evidence-based NSE long-term research. Scores indicate thesis strength, "
@@ -123,7 +125,6 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
                 if growth_values
                 else None
             )
-
             return_values = [
                 float(value)
                 for value in (row["ROE"], row["ROCE"])
@@ -134,7 +135,6 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
                 if return_values
                 else None
             )
-
             debt = row["Debt / Equity"]
             financial = None if debt is None else _bounded(100 - float(debt) * 40)
             consistency = row["FCF Consistency"]
@@ -146,17 +146,13 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
                     + (30 if row["FCF Positive"] else 0)
                 )
             )
-
             pe_pct = percentile(row["P/E"], pe_values)
             pb_pct = percentile(row["P/B"], pb_values)
             valuation = None
             if pe_pct is not None or pb_pct is not None:
-                percentiles = [
-                    value for value in (pe_pct, pb_pct) if value is not None
-                ]
+                percentiles = [value for value in (pe_pct, pb_pct) if value is not None]
                 row["Valuation Percentile"] = sum(percentiles) / len(percentiles)
                 valuation = 100 - float(row["Valuation Percentile"])
-
             components = {
                 "growth": (growth, 0.30),
                 "profitability": (profitability, 0.25),
@@ -178,7 +174,6 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
             confidence = len(available) / len(components) * 100
             row["Score"] = round(score, 1)
             row["Confidence"] = round(confidence, 0)
-
             if confidence < 60:
                 row["Classification"] = "Insufficient Evidence"
             elif score >= 75:
