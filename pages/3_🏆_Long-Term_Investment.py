@@ -56,6 +56,11 @@ def _snapshot_row(snapshot: FundamentalsSnapshot) -> dict[str, object]:
     if latest and latest.free_cash_flow is not None and latest.earnings not in (None, 0):
         cash_conversion = latest.free_cash_flow / latest.earnings
     fcf_consistency = len(positive_fcf) / len(fcf_values) * 100 if fcf_values else None
+    fcf_positive = bool(
+        latest
+        and latest.free_cash_flow is not None
+        and latest.free_cash_flow > 0
+    )
     return {
         "Stock": snapshot.symbol.removesuffix(".NS"),
         "Company": snapshot.company_name,
@@ -65,7 +70,7 @@ def _snapshot_row(snapshot: FundamentalsSnapshot) -> dict[str, object]:
         "ROE": snapshot.roe,
         "ROCE": snapshot.roce,
         "Debt / Equity": snapshot.debt_to_equity,
-        "FCF Positive": bool(latest and latest.free_cash_flow is not None and latest.free_cash_flow > 0),
+        "FCF Positive": fcf_positive,
         "FCF Consistency": fcf_consistency,
         "Cash Conversion": cash_conversion,
         "Market Cap": snapshot.market_cap,
@@ -106,7 +111,11 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
             for value in (row["Revenue CAGR"], row["Earnings CAGR"])
             if value is not None
         ]
-        growth = _bounded(sum(growth_values) / len(growth_values) * 3.0) if growth_values else None
+        growth = (
+            _bounded(sum(growth_values) / len(growth_values) * 3.0)
+            if growth_values
+            else None
+        )
 
         return_values = [
             float(value)
@@ -143,9 +152,17 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
             "cash": (cash_quality, 0.15),
             "valuation": (valuation, 0.10),
         }
-        available = [(value, weight) for value, weight in components.values() if value is not None]
+        available = [
+            (value, weight)
+            for value, weight in components.values()
+            if value is not None
+        ]
         weight_total = sum(weight for _, weight in available)
-        score = sum(value * weight for value, weight in available) / weight_total if weight_total else 0
+        score = (
+            sum(value * weight for value, weight in available) / weight_total
+            if weight_total
+            else 0
+        )
         confidence = len(available) / len(components) * 100
         row["Score"] = round(score, 1)
         row["Confidence"] = round(confidence, 0)
@@ -331,7 +348,9 @@ if record["ROE"] is None:
 if record["ROCE"] is None:
     risks.append("ROCE is unavailable and is therefore not scored.")
 if not risks:
-    risks.append("No automatic red flag was triggered; deeper qualitative review is still required.")
+    risks.append(
+        "No automatic red flag was triggered; deeper qualitative review is still required."
+    )
 for risk in risks:
     st.write(f"• {risk}")
 
