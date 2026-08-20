@@ -8,7 +8,6 @@ import streamlit as st
 from trading_assistant.application.live_analysis import TechnicalMetadataLoader
 from trading_assistant.data.interfaces import Timeframe
 from trading_assistant.indicators import ema, macd, relative_volume, rsi, supertrend
-from trading_assistant.monitoring.market_scanner import MarketScanner
 from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
 
 st.set_page_config(page_title="NSE Intraday", page_icon="📈", layout="wide")
