@@ -11,9 +11,6 @@ st.caption(
     "not a prediction or guarantee of future returns."
 )
 
-# The data adapter is intentionally explicit: until a production fundamentals provider
-# is configured, the UI does not invent company financials. These values can be replaced
-# by the normalized fundamentals provider without changing the analysis layer.
 watchlist = st.session_state.get("long_term_candidates", [])
 if not watchlist:
     st.info(
@@ -86,7 +83,10 @@ sections = {
     "💸 Valuation": {
         "Valuation Percentile": f"{metrics.valuation_percentile:.0f}/100",
         "Valuation Score": f"{assessment.valuation:.1f}/100",
-        "Verdict": "Attractive / Fair / Expensive requires verified peer and historical valuation data.",
+        "Verdict": (
+            "Attractive / Fair / Expensive requires verified peer and historical "
+            "valuation data."
+        ),
     },
 }
 
