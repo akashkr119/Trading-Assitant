@@ -6,9 +6,9 @@ verified provider can replace it without changing the analysis layer.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pandas as pd
 
