@@ -26,6 +26,7 @@ class FundamentalsSnapshot:
 
     symbol: str
     company_name: str
+    sector: str | None
     as_of: datetime
     source: str
     periods: tuple[FinancialPeriod, ...]
