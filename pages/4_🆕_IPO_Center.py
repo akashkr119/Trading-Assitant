@@ -9,15 +9,18 @@ import streamlit as st
 
 from trading_assistant.ipo import IPOAssessment, assess_ipo
 from trading_assistant.ipo_feed import get_open_ipos
+from trading_assistant.ui.theme import apply_theme
 
 st.set_page_config(page_title="IPO Center", page_icon="🆕", layout="wide")
-st.title("🆕 IPO Center")
+apply_theme()
+
+st.markdown("# 🆕 IPO Center")
 st.caption(
-    "Track currently open Indian IPOs and review issue structure, dates, valuation inputs, "
-    "and investment risks. Verify the latest RHP and exchange notice before applying."
+    "Evidence-first IPO research · issue structure · valuation · fundamentals · risk. "
+    "Verify the latest RHP/DRHP before applying."
 )
 
-refresh = st.button("🔄 Refresh IPO Feed", type="primary")
+refresh = st.button("🔄 Refresh IPO Feed", type="primary", use_container_width=True)
 if refresh or "open_ipos" not in st.session_state:
     with st.spinner("Loading currently open Indian IPOs..."):
         ipos, source_mode = get_open_ipos()
@@ -83,7 +86,6 @@ if not ipos:
     st.info("Click **Refresh IPO Feed** to check the latest calendar again.")
     st.stop()
 
-# Keep only issues whose dates still contain today. This also protects the fallback snapshot.
 today = date.today()
 ipos = [item for item in ipos if item["Open"] <= today <= item["Close"]]
 
@@ -106,8 +108,7 @@ summary[2].metric("SME", sme_count)
 summary[3].metric("Closing ≤ 1 Day", closing_soon)
 
 st.markdown("## 🔎 IPO Opportunity Board")
-segment_options = ["All", "Mainboard", "SME"]
-segment = st.selectbox("Segment", segment_options, index=0)
+segment = st.selectbox("Segment", ["All", "Mainboard", "SME"])
 filtered = [
     item
     for item in ipos
@@ -144,9 +145,9 @@ selected = st.selectbox(
 )
 record = next(item for item in filtered if item["Company"] == selected)
 
-st.markdown(f"## 📄 {record['Company']}")
 days = _days_remaining(record)
 share = _fresh_share(record)
+st.markdown(f"## 📄 {record['Company']}")
 
 info = st.columns(6)
 info[0].metric("Issue Size", _money(record.get("Issue Size")))
@@ -180,19 +181,19 @@ checklist[1].markdown(
 )
 checklist[2].markdown(
     "**Risk & liquidity**\n\n"
-    "Review debt, cash flow, promoter holding, lot size, SME liquidity and post-listing volatility."
+    "Review debt, cash flow, promoter holding, lot size, SME liquidity and "
+    "post-listing volatility."
 )
 
 assessment = _assessment(record)
+st.markdown("## 🧮 Investment Assessment")
 if assessment is None:
-    st.markdown("## 🧮 Investment Assessment")
     st.info(
-        "Fundamental scoring is **not available for this issue yet**. Verified Revenue Growth, "
-        "ROE, ROCE, debt/equity, peer valuation and fresh-issue-share inputs are not all present "
-        "in the IPO feed. Missing data is shown as N/A rather than guessed."
+        "Fundamental scoring is **not available for this issue yet**. Verified "
+        "Revenue Growth, ROE, ROCE, debt/equity, peer valuation and fresh-issue-share "
+        "inputs are not all present in the IPO feed. Missing data is shown as N/A."
     )
 else:
-    st.markdown("## 🧮 Investment Assessment")
     cols = st.columns(4)
     cols[0].metric("Valuation", assessment.valuation)
     cols[1].metric("Financial Quality", assessment.financial_quality)
