@@ -52,6 +52,7 @@ h3 { font-size: clamp(1.05rem, 1.5vw, 1.3rem) !important; }
   border-radius: 14px;
   padding: .8rem .9rem;
   min-height: 92px;
+  box-sizing: border-box;
 }
 
 [data-testid="stMetricLabel"] {
@@ -61,6 +62,8 @@ h3 { font-size: clamp(1.05rem, 1.5vw, 1.3rem) !important; }
 [data-testid="stMetricValue"] {
   color: var(--ta-text) !important;
   font-size: clamp(1.15rem, 2vw, 1.7rem) !important;
+  line-height: 1.15 !important;
+  overflow-wrap: anywhere;
 }
 
 .stButton > button, .stDownloadButton > button {
@@ -75,6 +78,12 @@ h3 { font-size: clamp(1.05rem, 1.5vw, 1.3rem) !important; }
   border: 1px solid var(--ta-border);
   border-radius: 12px;
   overflow: hidden;
+  max-width: 100%;
+}
+
+[data-testid="stDataFrame"] > div {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 div[data-testid="stExpander"] {
@@ -83,7 +92,21 @@ div[data-testid="stExpander"] {
   background: rgba(15,20,29,.65);
 }
 
-[data-testid="stDataFrame"] > div { max-width: 100%; overflow-x: auto; }
+/* Avoid forcing dense financial columns into unreadable widths. */
+[data-testid="stHorizontalBlock"] {
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .block-container {
+    padding-left: .75rem;
+    padding-right: .75rem;
+  }
+  [data-testid="stMetric"] {
+    min-height: 84px;
+    padding: .7rem .75rem;
+  }
+}
 
 @media (max-width: 768px) {
   .block-container { padding-left: .65rem; padding-right: .65rem; }
@@ -91,6 +114,24 @@ div[data-testid="stExpander"] {
   [data-testid="stMetric"] { min-height: 78px; padding: .65rem .7rem; }
   [data-testid="stMetricValue"] { line-height: 1.15; }
   .stButton > button { min-height: 44px; }
+  [data-testid="stDataFrame"] { font-size: .78rem; }
+}
+
+@media (max-width: 600px) {
+  /* Streamlit columns become stacked cards on narrow phones. */
+  [data-testid="stHorizontalBlock"] {
+    flex-wrap: wrap !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+    min-width: min(100%, 280px) !important;
+    flex: 1 1 100% !important;
+  }
+  [data-testid="stMetric"] {
+    width: 100%;
+  }
+  .stButton > button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
