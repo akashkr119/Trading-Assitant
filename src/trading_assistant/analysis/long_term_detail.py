@@ -51,7 +51,9 @@ def build_long_term_detail(
     cash_conversion = sum(conversions) / len(conversions) if conversions else None
 
     if snapshot.debt_to_equity is None:
-        balance_sheet_comment = "Debt-to-equity is unavailable; balance-sheet risk needs verification."
+        balance_sheet_comment = (
+            "Debt-to-equity is unavailable; balance-sheet risk needs verification."
+        )
     elif snapshot.debt_to_equity <= 0.5:
         balance_sheet_comment = "Current debt-to-equity is relatively moderate."
     else:
@@ -62,7 +64,9 @@ def build_long_term_detail(
     elif snapshot.pe_ratio <= 20:
         valuation_comment = "P/E is below or around the configured moderate-valuation threshold."
     else:
-        valuation_comment = "P/E is elevated; future returns may depend heavily on continued growth."
+        valuation_comment = (
+            "P/E is elevated; future returns may depend heavily on continued growth."
+        )
 
     thesis_killers = (
         "Sustained revenue or earnings growth deterioration.",
