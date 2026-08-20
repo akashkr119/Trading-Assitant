@@ -1,7 +1,5 @@
 """Shared responsive visual system for all Trading Assistant Streamlit pages."""
 
-from __future__ import annotations
-
 import streamlit as st
 
 
