@@ -20,7 +20,11 @@ CSS = """
 }
 
 .stApp {
-  background: radial-gradient(circle at top right, rgba(41, 211, 230, .055), transparent 34%), var(--ta-bg);
+  background: radial-gradient(
+    circle at top right,
+    rgba(41, 211, 230, .055),
+    transparent 34%
+  ), var(--ta-bg);
   color: var(--ta-text);
 }
 
@@ -121,7 +125,8 @@ def page_header(title: str, subtitle: str = "", accent: str = "gold") -> None:
     }
     color = accent_colors.get(accent, accent_colors["gold"])
     st.markdown(
-        f'<div style="border-left:4px solid {color}; padding:.25rem 0 .35rem .8rem; margin-bottom:1rem;">'
+        f'<div style="border-left:4px solid {color}; '
+        'padding:.25rem 0 .35rem .8rem; margin-bottom:1rem;">'
         f'<h1 style="margin:0;">{title}</h1>'
         f'<div style="color:var(--ta-muted); margin-top:.2rem;">{subtitle}</div>'
         "</div>",
