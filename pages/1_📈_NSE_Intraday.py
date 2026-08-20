@@ -9,11 +9,17 @@ from trading_assistant.application.live_analysis import TechnicalMetadataLoader
 from trading_assistant.data.interfaces import Timeframe
 from trading_assistant.indicators import ema, macd, relative_volume, rsi, supertrend
 from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
+from trading_assistant.ui.theme import apply_theme, page_header, section_header
 
 st.set_page_config(page_title="NSE Intraday", page_icon="📈", layout="wide")
-st.title("📈 NSE Intraday Trading")
+apply_theme()
+page_header(
+    "📈 NSE Intraday",
+    "Live market intelligence · locked trade plans · multi-timeframe confirmation",
+    accent="cyan",
+)
 st.caption(
-    "Live NSE decision-support dashboard. It does not place orders; "
+    "Decision-support dashboard only. It does not place orders; "
     "validate alerts with paper trading first."
 )
 
@@ -80,7 +86,7 @@ def _trend_from_frame(frame: pd.DataFrame) -> str:
     slow = float(ema(close, 20).iloc[-1])
     if fast > slow and float(close.iloc[-1]) > fast:
         return "BULLISH"
-    if fast < slow and float(close.iloc[-1]) < fast:
+    if fast < slow and float(close.iloc[-1]) < slow:
         return "BEARISH"
     return "MIXED"
 
@@ -285,7 +291,7 @@ def _render_selected(symbol: str) -> None:
     active = [record for record in records if record.status == "OPEN"]
     active_alert = active[-1] if active else None
 
-    st.markdown(f"### 📊 {symbol} Live Trading Terminal")
+    section_header(f"📊 {symbol} Live Trading Terminal")
     st.caption(
         f"Live update: {now.strftime('%H:%M:%S UTC')} · "
         "auto-refresh every 5 seconds · paper-trading decision support"
@@ -300,7 +306,7 @@ def _render_selected(symbol: str) -> None:
     price_cols[5].metric("Volume", f"{snapshot['volume']:,.0f}")
     price_cols[6].metric("VWAP", f"₹{snapshot['vwap']:.2f}")
 
-    st.markdown("#### 📈 Live Technical Dashboard")
+    section_header("📈 Live Technical Dashboard")
     indicator_cols = st.columns(7)
     indicator_cols[0].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")
     indicator_cols[1].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")
@@ -312,6 +318,7 @@ def _render_selected(symbol: str) -> None:
         "VWAP Position",
         "ABOVE" if snapshot["price"] >= snapshot["vwap"] else "BELOW",
     )
+
     trend_cols = st.columns(4)
     trend_cols[0].metric("1m Trend", str(snapshot["trend_1m"]))
     trend_cols[1].metric("5m Trend", str(snapshot["trend_5m"]))
@@ -326,11 +333,11 @@ def _render_selected(symbol: str) -> None:
 
     chart_col, levels_col = st.columns([2, 1])
     with chart_col:
-        st.markdown("#### 📉 Live Price Chart")
+        section_header("📉 Live Price Chart")
         st.line_chart(snapshot["chart"], height=360, use_container_width=True)
         st.caption("1-minute candles · last 120 bars · EMA 9 / EMA 20 / VWAP")
     with levels_col:
-        st.markdown("#### 🎯 Support / Resistance")
+        section_header("🎯 Support / Resistance")
         st.markdown("**🔴 Resistance**")
         if snapshot["resistances"]:
             for index, level in enumerate(snapshot["resistances"], 1):
@@ -344,7 +351,7 @@ def _render_selected(symbol: str) -> None:
         else:
             st.info("No support detected.")
 
-    st.markdown("#### 🚨 Live Trading Alert")
+    section_header("🚨 Live Trading Alert")
     if active_alert is not None:
         if active_alert.direction == "BUY":
             st.success(f"🟢 LIVE BUY ALERT — {symbol} at ₹{active_alert.entry:.2f}")
@@ -377,7 +384,7 @@ def _render_selected(symbol: str) -> None:
 
     if records:
         latest = records[-1]
-        st.markdown("#### 📌 Alert Trade Plan")
+        section_header("📌 Alert Trade Plan")
         cols = st.columns(6)
         cols[0].metric("Alert Price", f"₹{latest.entry:.2f}")
         cols[1].metric("Stop Loss", f"₹{latest.stop_loss:.2f}")
@@ -410,7 +417,7 @@ def _render_selected(symbol: str) -> None:
         st.caption("Data is refreshed from the configured broker market-data provider.")
 
 
-st.subheader("🔎 NSE Intraday Scanner")
+section_header("🔎 NSE Intraday Scanner")
 scan_col, limit_col = st.columns([3, 1])
 with scan_col:
     scan_clicked = st.button(
@@ -431,7 +438,7 @@ if scan_clicked:
 
 candidates = st.session_state.get("nse_intraday_candidates", ())
 if candidates:
-    st.markdown("### 🔥 Best NSE Intraday Opportunities")
+    section_header("🔥 Best NSE Intraday Opportunities")
     rows = [
         {
             "Rank": index,
@@ -461,7 +468,7 @@ if candidates:
 else:
     st.info("Run the NSE scanner to get automatically ranked opportunities.")
 
-st.markdown("### 📒 NSE BUY / SELL Alert History")
+section_header("📒 NSE BUY / SELL Alert History")
 records = journal.records()
 if records:
     history = []
@@ -498,13 +505,3 @@ if records:
     st.dataframe(history, use_container_width=True, hide_index=True)
 else:
     st.info("No NSE BUY/SELL alerts have been recorded yet.")
-
-if scanner.last_scan_count:
-    with st.expander("🔧 NSE scan diagnostics"):
-        cols = st.columns(4)
-        cols[0].metric("Stocks scanned", scanner.last_scan_count)
-        cols[1].metric("Data received", scanner.last_data_count)
-        cols[2].metric("Qualified", scanner.last_qualified_count)
-        cols[3].metric("Data errors", len(scanner.last_scan_errors))
-        for symbol, error in list(scanner.last_scan_errors.items())[:20]:
-            st.warning(f"{symbol}: {error}")
