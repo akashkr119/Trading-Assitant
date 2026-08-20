@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import math
 
-import pandas as pd
-
 from trading_assistant.data.interfaces import OHLCVBar
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
 from trading_assistant.monitoring.crypto_scanner import (
@@ -65,10 +63,6 @@ class RobustCryptoIntradayScanner(CryptoIntradayScanner):
             )
         )
 
-        # The strict scanner above intentionally returns only full-confluence
-        # setups. If that rejects the symbol, keep it in the ranked scan as a
-        # near-setup whenever the indicators are valid. This prevents the UI
-        # from showing an empty result simply because the market is mixed.
         bullish = bullish_points >= bearish_points
         points = bullish_points if bullish else bearish_points
         direction = "LONG" if bullish else "SHORT"
