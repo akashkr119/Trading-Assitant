@@ -24,6 +24,7 @@ from trading_assistant.monitoring.signal_dispatch import SignalDispatcher
 from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
 from trading_assistant.monitoring.state import MonitorStateMachine
 from trading_assistant.monitoring.swing_scanner import SwingScanner
+from trading_assistant.ui.theme import apply_theme, page_header, section_header
 
 
 st.set_page_config(
@@ -32,6 +33,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+apply_theme()
 
 
 @st.cache_resource
@@ -57,15 +59,21 @@ for key, default in {
         st.session_state[key] = default
 
 
-st.title("📈 Trading Assistant")
+page_header(
+    "📈 Trading Assistant",
+    "Indian equities decision-support · intraday scanner · swing ideas · live monitoring",
+    accent="gold",
+)
 st.caption(
-    "Intraday and swing decision-support for Indian equities — the tool scans the market, "
-    "ranks candidates, and lets you choose what to monitor. It never places orders."
+    "Scan the market, rank opportunities and monitor selected setups. "
+    "The application never places orders."
 )
 
 
 with st.sidebar:
-    st.header("Connection")
+    st.markdown("## ⚙️ Control Center")
+    st.caption("Broker connection and live refresh settings")
+    st.markdown("### 🔌 Connection")
     broker_name = st.selectbox(
         "Broker",
         [item.value for item in app.broker.available_brokers()],
@@ -92,7 +100,7 @@ with st.sidebar:
         st.success("Broker credentials configured.")
 
     st.divider()
-    st.header("Monitoring")
+    st.markdown("### ⏱️ Monitoring")
     refresh_seconds = st.select_slider(
         "Refresh interval",
         options=[5, 10, 15, 30, 60],
@@ -122,25 +130,17 @@ market_open = (
 snapshot = app.dashboard(now)
 symbols = snapshot.watchlist.symbols()
 
-status_rows = [
-    (
-        ("Broker", "Connected" if connected else "Disconnected"),
-        ("NSE Market", "OPEN" if market_open else "CLOSED"),
-    ),
-    (
-        ("Selected", len(symbols)),
-        ("Active Signals", len(st.session_state.results)),
-    ),
-]
-for status_row in status_rows:
-    status_cols = st.columns(2)
-    for index, (label, value) in enumerate(status_row):
-        status_cols[index].metric(label, value)
+section_header("📊 Market Command Center")
+status_cols = st.columns(4)
+status_cols[0].metric("Broker", "Connected" if connected else "Disconnected")
+status_cols[1].metric("NSE Market", "OPEN" if market_open else "CLOSED")
+status_cols[2].metric("Watchlist", len(symbols))
+status_cols[3].metric("Active Signals", len(st.session_state.results))
 
 connect_col, refresh_col = st.columns([3, 1])
 with connect_col:
     if st.button(
-        f"Connect {broker_name.title()}",
+        f"🔌 Connect {broker_name.title()}",
         type="primary",
         use_container_width=True,
     ):
@@ -170,18 +170,19 @@ with connect_col:
         except Exception as error:
             st.error(f"Unable to connect: {error}")
 with refresh_col:
-    if st.button("Refresh now", use_container_width=True):
+    if st.button("🔄 Refresh", use_container_width=True):
         st.rerun()
 
 
 if not connected:
-    st.info("Connect Groww or Upstox first. The tool will then scan the market for you.")
+    st.info(
+        "Connect Groww or Upstox to activate NSE scanning, live monitoring and swing analysis."
+    )
 else:
-    st.subheader("🔎 Intraday Market Scanner")
+    section_header("⚡ Intraday Market Scanner")
     st.write(
-        "You do **not** need to tell the tool which stock to use. "
-        "Scan the liquid NSE universe, review the strongest current setups, "
-        "then choose the stock you want to monitor intraday."
+        "Scan the liquid NSE universe, review the strongest current setups and "
+        "choose the stock you want to monitor intraday."
     )
 
     scan_col, limit_col = st.columns([3, 1])
@@ -204,7 +205,7 @@ else:
     candidates = st.session_state.scanner_candidates
     scanner = st.session_state.scanner
     if candidates:
-        st.markdown("#### 🔥 Best NSE Intraday Opportunities")
+        section_header("🔥 Best NSE Intraday Opportunities")
         rows = [
             {
                 "Rank": index,
@@ -247,6 +248,7 @@ else:
         st.warning("NSE regular session is closed. Intraday scanner is paused.")
 
     intraday_live_slot = st.empty()
+
 
 def _pnl_percent(direction: str, entry: float, price: float) -> float:
     if entry == 0:
@@ -455,347 +457,140 @@ def selected_nse_intraday_panel() -> None:
     active_alert = active[-1] if active else None
 
     st.divider()
-    st.subheader(f"📊 {symbol} — Live Intraday Analysis")
+    section_header(f"📊 {symbol} Live Intraday Terminal")
     st.caption(
         f"Live update: {current_time.strftime('%H:%M:%S IST')} · "
-        f"automatic refresh every {refresh_seconds} seconds"
+        f"auto-refresh every {refresh_seconds}s"
     )
 
-    indicator_rows = [
-        (("Current Price", f"₹{snapshot['price']:.2f}"), ("EMA 9", f"₹{snapshot['ema9']:.2f}")),
-        (("EMA 20", f"₹{snapshot['ema20']:.2f}"), ("RSI", f"{snapshot['rsi']:.1f}")),
-        (("MACD Hist", f"{snapshot['macd']:.4f}"), ("RVOL", f"{snapshot['rvol']:.2f}x")),
-        (("Supertrend", str(snapshot["supertrend"])),),
-    ]
-    for indicator_row in indicator_rows:
-        indicator_cols = st.columns(2)
-        for index, (label, value) in enumerate(indicator_row):
-            indicator_cols[index].metric(label, value)
+    metric_cols = st.columns(7)
+    metric_cols[0].metric("Current Price", f"₹{snapshot['price']:.2f}")
+    metric_cols[1].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")
+    metric_cols[2].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")
+    metric_cols[3].metric("RSI", f"{snapshot['rsi']:.1f}")
+    metric_cols[4].metric("MACD Hist", f"{snapshot['macd']:.4f}")
+    metric_cols[5].metric("RVOL", f"{snapshot['rvol']:.2f}x")
+    metric_cols[6].metric("Supertrend", str(snapshot["supertrend"]))
 
     level_cols = st.columns(2)
     with level_cols[0]:
-        st.markdown("#### 🟢 Support — maximum 3")
-        if snapshot["supports"]:
-            for index, level in enumerate(snapshot["supports"], 1):
+        section_header("🟢 Support")
+        supports = snapshot["supports"]
+        if supports:
+            for index, level in enumerate(supports, 1):
                 st.write(f"S{index}: **₹{level:.2f}**")
         else:
             st.info("No confirmed support below current price.")
     with level_cols[1]:
-        st.markdown("#### 🔴 Resistance — maximum 3")
-        if snapshot["resistances"]:
-            for index, level in enumerate(snapshot["resistances"], 1):
+        section_header("🔴 Resistance")
+        resistances = snapshot["resistances"]
+        if resistances:
+            for index, level in enumerate(resistances, 1):
                 st.write(f"R{index}: **₹{level:.2f}**")
         else:
             st.info("No confirmed resistance above current price.")
 
-    st.markdown("#### 🚨 Live Trading Alert")
+    section_header("🚨 Active Trading Alert")
     if active_alert is not None:
+        alert_text = "BUY" if active_alert.direction == "BUY" else "SELL"
         if active_alert.direction == "BUY":
             st.success(
-                f"🟢 LIVE BUY ALERT — {symbol} at ₹{active_alert.entry:.2f}"
+                f"🟢 LIVE {alert_text} ALERT — {symbol} · "
+                f"locked entry ₹{active_alert.entry:.2f}"
             )
         else:
             st.error(
-                f"🔴 LIVE SELL ALERT — {symbol} at ₹{active_alert.entry:.2f}"
+                f"🔴 LIVE {alert_text} ALERT — {symbol} · "
+                f"locked entry ₹{active_alert.entry:.2f}"
             )
+        st.caption(
+            "Entry, stop and targets remain fixed to the alert. "
+            "Only current price and P/L update live."
+        )
         st.write(active_alert.reason)
+        plan_cols = st.columns(6)
+        plan_cols[0].metric("Signal", alert_text)
+        plan_cols[1].metric("Locked Entry", f"₹{active_alert.entry:.2f}")
+        plan_cols[2].metric("Stop Loss", f"₹{active_alert.stop_loss:.2f}")
+        plan_cols[3].metric("Target 1", f"₹{active_alert.target_1:.2f}")
+        plan_cols[4].metric("Target 2", f"₹{active_alert.target_2:.2f}")
         pnl = _pnl_percent(
             active_alert.direction,
             active_alert.entry,
             float(snapshot["price"]),
         )
-        plan_rows = [
-            (
-                ("Alert Price", f"₹{active_alert.entry:.2f}"),
-                ("Stop Loss", f"₹{active_alert.stop_loss:.2f}"),
-            ),
-            (
-                ("Target 1", f"₹{active_alert.target_1:.2f}"),
-                ("Target 2", f"₹{active_alert.target_2:.2f}"),
-            ),
-            (
-                ("Risk : Reward", f"1:{active_alert.risk_reward:.1f}"),
-                ("Current P/L", f"{pnl:+.2f}%"),
-            ),
-        ]
-        for plan_row in plan_rows:
-            plan_cols = st.columns(2)
-            for index, (label, value) in enumerate(plan_row):
-                plan_cols[index].metric(label, value)
-    elif result is not None and result.decision.action.value in {"BUY", "SELL"}:
-        st.info("Signal detected; the first persisted alert price will remain fixed.")
+        plan_cols[5].metric("Live P/L", f"{pnl:+.2f}%")
     else:
-        st.warning("🟡 LIVE WATCH — no confirmed BUY/SELL alert at this moment.")
+        st.info("No active BUY/SELL alert is locked for this stock yet.")
 
-    if active_alert is not None:
-        if active_alert.target_2_achieved:
-            st.success(f"🎯 Target 2 achieved at ₹{active_alert.target_2:.2f}")
-        elif active_alert.target_1_achieved:
-            st.success(f"🎯 Target 1 achieved at ₹{active_alert.target_1:.2f}")
-        elif active_alert.stop_loss_hit:
-            st.error(f"🛑 Stop loss hit at ₹{active_alert.stop_loss:.2f}")
-        else:
-            st.info("Trade is OPEN. Target and stop-loss status are tracked live.")
-
-    st.markdown("#### 📒 Alert History for this Stock")
-    history = []
-    for record in reversed(records[-20:]):
-        if record.target_2_achieved:
-            outcome = "TARGET 2 ACHIEVED"
-        elif record.target_1_achieved:
-            outcome = "TARGET 1 ACHIEVED"
-        elif record.stop_loss_hit:
-            outcome = "STOP LOSS HIT"
-        else:
-            outcome = "OPEN"
-        comparison_price = record.sell_price or float(snapshot["price"])
-        pnl = _pnl_percent(record.direction, record.entry, comparison_price)
-        history.append(
-            {
-                "Time": record.timestamp,
-                "Alert": record.direction,
-                "Alert Price": f"₹{record.entry:.2f}",
-                "Stop Loss": f"₹{record.stop_loss:.2f}",
-                "Target 1": f"₹{record.target_1:.2f}",
-                "Target 2": f"₹{record.target_2:.2f}",
-                "Sell Price": (
-                    f"₹{record.sell_price:.2f}" if record.sell_price else "—"
-                ),
-                "Outcome": outcome,
-                "P/L": f"{pnl:+.2f}%",
-                "R": (
-                    f"{record.outcome_r:+.2f}R"
-                    if record.outcome_r is not None
-                    else "OPEN"
-                ),
-            }
+    if records:
+        section_header("📒 Alert History")
+        st.dataframe(
+            [
+                {
+                    "Time": record.timestamp,
+                    "Alert": record.direction,
+                    "Alert Price": f"₹{record.entry:.2f}",
+                    "Stop Loss": f"₹{record.stop_loss:.2f}",
+                    "Target 1": f"₹{record.target_1:.2f}",
+                    "Target 2": f"₹{record.target_2:.2f}",
+                    "Status": record.status,
+                    "Score": f"{record.score:.0f}/100",
+                }
+                for record in reversed(records)
+            ],
+            use_container_width=True,
+            hide_index=True,
         )
-    if history:
-        st.dataframe(history, use_container_width=True, hide_index=True)
-    else:
-        st.info("No BUY/SELL alerts recorded for this stock yet.")
 
 
-if connected and st.session_state.nse_intraday_selected:
-    with intraday_live_slot.container():
-        selected_nse_intraday_panel()
+if connected:
+    selected_nse_intraday_panel()
 
-st.subheader("Selected stocks to monitor")
-if symbols:
-    remove_cols = st.columns(min(len(symbols), 5))
-    for index, item in enumerate(symbols):
-        with remove_cols[index % len(remove_cols)]:
-            st.button(
-                f"{item}  ×",
-                key=f"remove_{item}",
-                on_click=app.remove_symbol,
-                args=(item,),
-                use_container_width=True,
+
+if connected:
+    st.divider()
+    section_header("📅 Swing Opportunities")
+    st.caption(
+        "Scan the broader NSE universe for multi-day opportunities. "
+        "Swing ideas are separate from live intraday alerts."
+    )
+    swing_col, swing_limit_col = st.columns([3, 1])
+    with swing_col:
+        swing_clicked = st.button(
+            "🔎 Scan swing opportunities",
+            use_container_width=True,
+        )
+    with swing_limit_col:
+        swing_limit = st.selectbox(
+            "Swing candidates",
+            [5, 10, 15],
+            index=1,
+        )
+    if swing_clicked:
+        swing_scanner: SwingScanner = st.session_state.swing_scanner
+        with st.spinner("Scanning NSE stocks for swing opportunities..."):
+            st.session_state.swing_candidates = swing_scanner.scan(
+                now,
+                limit=swing_limit,
             )
-else:
-    st.info("No stocks selected yet. Use the scanner above or add a stock to the watchlist.")
 
-
-@st.fragment(run_every=refresh_seconds if st.session_state.monitoring else None)
-def live_panel() -> None:
-    service: LiveAnalysisService | None = st.session_state.live_service
-    if service is None or not symbols:
-        return
-    if not service.builder.provider.is_market_open():
-        st.warning("NSE regular session is closed. Live intraday analysis is paused.")
-        return
-
-    current_time = datetime.now(IST)
-    with st.spinner("Running detailed multi-timeframe intraday analysis..."):
-        results = service.analyze(symbols, current_time)
-    st.session_state.results = results
-    app.set_results(results)
-
-    if service.errors:
-        with st.expander(f"Data warnings ({len(service.errors)})"):
-            for failed_symbol, error in service.errors.items():
-                st.warning(f"{failed_symbol}: {error}")
-    if not results:
-        st.info("No qualifying intraday setup detected in the selected stocks.")
-        return
-
-    st.subheader("📢 Live Intraday Signals")
-    st.caption(f"Last analysis: {current_time.strftime('%H:%M:%S IST')}")
-    for result in results:
-        decision = result.decision.action.value
-        score = result.decision.score
-        risk = result.risk_plan
-        with st.container(border=True):
-            title_col, score_col = st.columns([4, 1])
-            with title_col:
-                st.markdown(f"### {result.symbol} · {decision}")
-                st.caption(
-                    f"Setup: {result.setup.setup_type.value} · "
-                    f"Timeframe: {result.timeframe.alignment.value}"
-                )
-            with score_col:
-                st.metric("Score", f"{score:.0f}/100")
-            reason_col, risk_col = st.columns(2)
-            with reason_col:
-                st.markdown("**Why this signal**")
-                st.write(result.explanation.why_this_decision)
-                st.markdown("**Confirmation**")
-                for reason in result.decision.reasons:
-                    st.write(f"• {reason}")
-            with risk_col:
-                st.markdown("**Risk plan**")
-                if risk is None:
-                    st.warning("No valid risk plan for this setup.")
-                else:
-                    metric_cols = st.columns(4)
-                    metric_cols[0].metric("Entry", f"₹{risk.entry:.2f}")
-                    metric_cols[1].metric("Stop", f"₹{risk.stop_loss:.2f}")
-                    metric_cols[2].metric("Target 1", f"₹{risk.target_1:.2f}")
-                    metric_cols[3].metric("Target 2", f"₹{risk.target_2:.2f}")
-                    st.caption(
-                        f"R:R to Target 1 = {risk.risk_reward_1:.2f} · "
-                        f"Invalidation: {result.explanation.invalidation}"
-                    )
-            st.progress(min(max(score / 100.0, 0.0), 1.0), text="Decision confidence")
-
-    if st.session_state.notifier.sent:
-        st.subheader("Latest Alerts")
-        for alert in st.session_state.notifier.sent[-5:][::-1]:
-            st.info(f"{alert.sent_at.strftime('%H:%M:%S')} — {alert.message}")
-
-
-live_panel()
-
-if scanner is not None and scanner.last_scan_count:
-    with st.expander("🔧 Intraday scan diagnostics"):
-        diag_cols = st.columns(4)
-        diag_cols[0].metric("Stocks scanned", scanner.last_scan_count)
-        diag_cols[1].metric("Data received", scanner.last_data_count)
-        diag_cols[2].metric("Qualified", scanner.last_qualified_count)
-        diag_cols[3].metric("Data errors", len(scanner.last_scan_errors))
-        if scanner.last_scan_errors:
-            st.caption("The first 20 data errors are shown below.")
-            for failed_symbol, error in list(scanner.last_scan_errors.items())[:20]:
-                st.warning(f"{failed_symbol}: {error}")
-
-st.divider()
-st.subheader("How to use this tool")
-steps = (
-    "Connect the broker.",
-    "Choose Intraday Scanner or Swing Scanner depending on your trading horizon.",
-    "Let the tool rank stocks from the liquid NSE universe "
-    "instead of entering a stock manually.",
-    "Select a scanned intraday stock to open its live analysis panel.",
-    "Review live indicators, support/resistance and fixed alert trade plans.",
-    "Record signal outcomes before considering real-money trading.",
-)
-for index, step in enumerate(steps, 1):
-    st.write(f"{index}. {step}")
-
-st.divider()
-st.subheader("📅 Swing Trading Scanner")
-st.write(
-    "Swing mode is separate from intraday mode. It scans daily candles for "
-    "multi-day setups and gives you a shortlist; you choose which stocks to study further."
-)
-st.caption(
-    "Long-only cash-equity candidates for V1. Typical holding horizon: 2–8 weeks. "
-    "The scanner does not place orders."
-)
-
-swing_col, swing_limit_col = st.columns([3, 1])
-with swing_col:
-    swing_clicked = st.button(
-        "📅 Scan swing opportunities",
-        type="secondary",
-        use_container_width=True,
-    )
-with swing_limit_col:
-    swing_limit = st.selectbox("Swing candidates", [5, 10, 15], index=1)
-
-if swing_clicked:
-    swing_scanner: SwingScanner = st.session_state.swing_scanner
-    with st.spinner("Scanning daily trends, momentum, volume and breakouts..."):
-        st.session_state.swing_candidates = swing_scanner.scan(
-            now,
-            limit=swing_limit,
+    swing_candidates = st.session_state.swing_candidates
+    if swing_candidates:
+        st.dataframe(
+            [
+                {
+                    "Rank": index,
+                    "Symbol": item.symbol,
+                    "Signal": item.direction,
+                    "Score": f"{item.score:.0f}/100",
+                    "Price": f"₹{item.price:.2f}",
+                    "Why": item.reason,
+                }
+                for index, item in enumerate(swing_candidates, 1)
+            ],
+            use_container_width=True,
+            hide_index=True,
         )
-    st.rerun()
-
-swing_candidates = st.session_state.swing_candidates
-if swing_candidates:
-    overall = sorted(swing_candidates, key=lambda item: item.score, reverse=True)
-    st.markdown("#### 🔥 Best Overall Swing Opportunities")
-    overall_rows = [
-        {
-            "Rank": index,
-            "Segment": item.cap_segment,
-            "Symbol": item.symbol,
-            "Bias": item.direction,
-            "Score": f"{item.score:.0f}/100",
-            "Price": f"₹{item.price:.2f}",
-            "20D": f"{item.change_20d_pct:+.2f}%",
-            "Stop": f"₹{item.stop_loss:.2f}",
-            "Target 1": f"₹{item.target_1:.2f}",
-            "Target 2": f"₹{item.target_2:.2f}",
-        }
-        for index, item in enumerate(overall, 1)
-    ]
-    st.dataframe(overall_rows, use_container_width=True, hide_index=True)
-
-    for segment, icon in (
-        ("Large Cap", "📈"),
-        ("Mid Cap", "📊"),
-        ("Small Cap", "🚀"),
-    ):
-        segment_candidates = [
-            item for item in swing_candidates if item.cap_segment == segment
-        ]
-        st.markdown(f"#### {icon} {segment} — Top {swing_limit}")
-        if not segment_candidates:
-            st.info(f"No qualifying {segment.lower()} setup found in this scan.")
-            continue
-        rows = [
-            {
-                "Rank": index,
-                "Symbol": item.symbol,
-                "Bias": item.direction,
-                "Score": f"{item.score:.0f}/100",
-                "Price": f"₹{item.price:.2f}",
-                "20D": f"{item.change_20d_pct:+.2f}%",
-                "Stop": f"₹{item.stop_loss:.2f}",
-                "Target 1": f"₹{item.target_1:.2f}",
-                "Target 2": f"₹{item.target_2:.2f}",
-                "Hold": item.holding_period,
-                "Why": item.reason,
-            }
-            for index, item in enumerate(segment_candidates, 1)
-        ]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-
-    swing_symbols = [item.symbol for item in swing_candidates]
-    swing_chosen = st.multiselect(
-        "Choose swing candidates for detailed review",
-        swing_symbols,
-        default=[item.symbol for item in overall[:3]],
-        key="swing_selection",
-    )
-    if st.button("📌 Add selected swing stocks to watchlist", type="primary"):
-        for item in swing_chosen:
-            app.add_symbol(item, now.isoformat())
-        st.rerun()
-else:
-    swing_scanner: SwingScanner | None = st.session_state.swing_scanner
-    if swing_scanner is not None and swing_scanner.last_scan_count:
-        st.warning(
-            f"Swing scan completed: {swing_scanner.last_qualified_count} candidates "
-            f"qualified from {swing_scanner.last_scan_count} symbols."
-        )
-        if swing_scanner.last_scan_errors:
-            with st.expander(
-                f"Show data errors ({len(swing_scanner.last_scan_errors)})"
-            ):
-                for failed_symbol, error in swing_scanner.last_scan_errors.items():
-                    st.warning(f"{failed_symbol}: {error}")
     else:
-        st.info("Run the swing scanner to get a daily-chart shortlist.")
+        st.info("Run the swing scanner to populate multi-day opportunities.")
