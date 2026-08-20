@@ -81,6 +81,53 @@ def _assessment(record: dict[str, object]) -> IPOAssessment | None:
     )
 
 
+def _render_company_intelligence(record: dict[str, object]) -> None:
+    """Render a concise company brief for the selected IPO."""
+    st.markdown("## 🏢 Company Intelligence")
+    st.caption(
+        "A point-wise business summary for the selected IPO. "
+        "Future plans are based on disclosed IPO/RHP objectives where available."
+    )
+
+    brief_fields = (
+        ("What the company does", "What They Do"),
+        ("Business model", "Business Overview"),
+        ("Core goal", "Core Goal"),
+        ("Future plans", "Future Plans"),
+    )
+    overview_cols = st.columns(2)
+    for index, (label, key) in enumerate(brief_fields):
+        with overview_cols[index % 2]:
+            value = record.get(key)
+            st.markdown(f"**{label}**")
+            if value:
+                st.write(f"• {value}")
+            else:
+                st.info(
+                    "Not available in the current feed. Review the latest RHP/DRHP "
+                    "before relying on company-specific plans."
+                )
+
+    detail_cols = st.columns(3)
+    detail_fields = (
+        ("🚀 Growth drivers", "Growth Drivers"),
+        ("⚠️ Critical risks", "Key Risks"),
+        ("💰 IPO money use", "IPO Use of Funds"),
+    )
+    for column, (label, key) in zip(detail_cols, detail_fields):
+        with column:
+            st.markdown(f"**{label}**")
+            value = record.get(key)
+            if value:
+                st.write(f"• {value}")
+            else:
+                st.info("Not available in current feed.")
+
+    source = record.get("Research Source")
+    if source:
+        st.caption(f"Research basis: {source}. Always cross-check the latest RHP/DRHP.")
+
+
 if not ipos:
     st.warning("No IPO is currently shown as open.")
     st.info("Click **Refresh IPO Feed** to check the latest calendar again.")
@@ -166,6 +213,8 @@ st.write(
 if share is not None:
     st.caption(f"Fresh issue represents approximately {share:.1f}% of the stated issue size.")
 st.caption(f"Data source: {record.get('Source', 'N/A')}")
+
+_render_company_intelligence(record)
 
 st.markdown("## 🧭 Investor Checklist")
 checklist = st.columns(3)
