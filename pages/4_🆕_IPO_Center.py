@@ -13,8 +13,8 @@ from trading_assistant.ipo_feed import get_open_ipos
 st.set_page_config(page_title="IPO Center", page_icon="🆕", layout="wide")
 st.title("🆕 IPO Center")
 st.caption(
-    "Live IPO discovery with evidence-first analysis. IPO data and market sentiment "
-    "can change quickly; verify the RHP and exchange notice before applying."
+    "Track currently open Indian IPOs and review issue structure, dates, valuation inputs, "
+    "and investment risks. Verify the latest RHP and exchange notice before applying."
 )
 
 refresh = st.button("🔄 Refresh IPO Feed", type="primary")
@@ -26,6 +26,7 @@ if refresh or "open_ipos" not in st.session_state:
 
 ipos = st.session_state.get("open_ipos", [])
 source_mode = st.session_state.get("ipo_source_mode", "unknown")
+
 
 def _number(value: object) -> float | None:
     if value is None or pd.isna(value):
@@ -42,6 +43,18 @@ def _number(value: object) -> float | None:
 def _money(value: object) -> str:
     number = _number(value)
     return "N/A" if number is None else f"₹{number:,.2f} Cr"
+
+
+def _fresh_share(record: dict[str, object]) -> float | None:
+    issue = _number(record.get("Issue Size"))
+    fresh = _number(record.get("Fresh Issue"))
+    if issue in (None, 0) or fresh is None:
+        return None
+    return fresh / issue * 100.0
+
+
+def _days_remaining(record: dict[str, object]) -> int:
+    return max(0, (record["Close"] - date.today()).days)
 
 
 def _assessment(record: dict[str, object]) -> IPOAssessment | None:
@@ -64,61 +77,117 @@ def _assessment(record: dict[str, object]) -> IPOAssessment | None:
         fresh_issue_share=float(record["Fresh Issue Share"]),
     )
 
+
 if not ipos:
-    st.info(
-        "There are no IPOs currently shown as open. Use **Refresh IPO Feed** to check again."
-    )
+    st.warning("No IPO is currently shown as open.")
+    st.info("Click **Refresh IPO Feed** to check the latest calendar again.")
     st.stop()
 
+# Keep only issues whose dates still contain today. This also protects the fallback snapshot.
+today = date.today()
+ipos = [item for item in ipos if item["Open"] <= today <= item["Close"]]
+
+if not ipos:
+    st.warning("The IPO feed returned no issue that is open today.")
+    st.stop()
+
+mainboard_count = sum(item.get("Segment") == "Mainboard" for item in ipos)
+sme_count = sum(item.get("Segment") == "SME" for item in ipos)
+closing_soon = sum(_days_remaining(item) <= 1 for item in ipos)
+
 st.success(
-    f"{len(ipos)} IPO(s) currently open · feed: {source_mode} · "
-    f"checked {date.today().isoformat()}"
+    f"{len(ipos)} IPO(s) open today · {source_mode} · checked {today.isoformat()}"
 )
 
-st.subheader("📅 Open IPOs")
-display_rows = []
-for item in ipos:
-    display_rows.append(
+summary = st.columns(4)
+summary[0].metric("Open IPOs", len(ipos))
+summary[1].metric("Mainboard", mainboard_count)
+summary[2].metric("SME", sme_count)
+summary[3].metric("Closing ≤ 1 Day", closing_soon)
+
+st.markdown("## 🔎 IPO Opportunity Board")
+segment_options = ["All", "Mainboard", "SME"]
+segment = st.selectbox("Segment", segment_options, index=0)
+filtered = [
+    item
+    for item in ipos
+    if segment == "All" or item.get("Segment") == segment
+]
+
+if not filtered:
+    st.info(f"No open {segment} IPOs are available in the current feed.")
+    st.stop()
+
+rows = []
+for item in filtered:
+    days = _days_remaining(item)
+    share = _fresh_share(item)
+    rows.append(
         {
             "Company": item["Company"],
             "Segment": item.get("Segment", "N/A"),
             "Price Band": item.get("Price Band", "N/A"),
             "Issue Size": _money(item.get("Issue Size")),
+            "Fresh Capital": _money(item.get("Fresh Issue")),
             "Lot Size": item.get("Lot Size") or "N/A",
-            "Open": item["Open"].strftime("%d %b %Y"),
-            "Close": item["Close"].strftime("%d %b %Y"),
-            "Sector": item.get("Sector", "N/A"),
+            "Open": item["Open"].strftime("%d %b"),
+            "Close": item["Close"].strftime("%d %b"),
+            "Time Left": "Closes today" if days == 0 else f"{days} day(s)",
+            "Fresh Issue %": "N/A" if share is None else f"{share:.0f}%",
         }
     )
-st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 selected = st.selectbox(
     "🎯 Select an IPO for full analysis",
-    [item["Company"] for item in ipos],
+    [item["Company"] for item in filtered],
 )
-record = next(item for item in ipos if item["Company"] == selected)
+record = next(item for item in filtered if item["Company"] == selected)
 
-st.markdown("## 📄 IPO Details")
-info = st.columns(5)
+st.markdown(f"## 📄 {record['Company']}")
+days = _days_remaining(record)
+share = _fresh_share(record)
+
+info = st.columns(6)
 info[0].metric("Issue Size", _money(record.get("Issue Size")))
 info[1].metric("Fresh Issue", _money(record.get("Fresh Issue")))
 info[2].metric("OFS", _money(record.get("OFS")))
 info[3].metric("Lot Size", str(record.get("Lot Size") or "N/A"))
 info[4].metric("Segment", str(record.get("Segment", "N/A")))
+info[5].metric("Closing", "Today" if days == 0 else f"{days} day(s)")
+
 st.write(
     f"**Price band:** {record.get('Price Band', 'N/A')} · "
     f"**Open:** {record['Open'].strftime('%d %b %Y')} · "
     f"**Close:** {record['Close'].strftime('%d %b %Y')} · "
     f"**Sector:** {record.get('Sector', 'N/A')}"
 )
+if share is not None:
+    st.caption(f"Fresh issue represents approximately {share:.1f}% of the stated issue size.")
 st.caption(f"Data source: {record.get('Source', 'N/A')}")
+
+st.markdown("## 🧭 Investor Checklist")
+checklist = st.columns(3)
+checklist[0].markdown(
+    "**Issue structure**\n\n"
+    "Review fresh issue versus OFS. Fresh capital funds the company; OFS proceeds go to selling holders."
+)
+checklist[1].markdown(
+    "**Valuation**\n\n"
+    "Compare the IPO valuation with listed peers using RHP financials. Do not treat GMP as valuation evidence."
+)
+checklist[2].markdown(
+    "**Risk & liquidity**\n\n"
+    "Review debt, cash flow, promoter holding, lot size, SME liquidity and post-listing volatility."
+)
 
 assessment = _assessment(record)
 if assessment is None:
+    st.markdown("## 🧮 Investment Assessment")
     st.info(
-        "📚 Fundamental IPO scoring is not shown for this issue because verified "
-        "Revenue Growth, ROE, ROCE, debt/equity and peer-valuation data are not "
-        "connected to the IPO feed. The tool will not invent those values."
+        "Fundamental scoring is **not available for this issue yet**. Verified Revenue Growth, "
+        "ROE, ROCE, debt/equity, peer valuation and fresh-issue-share inputs are not all present "
+        "in the IPO feed. Missing data is shown as N/A rather than guessed."
     )
 else:
     st.markdown("## 🧮 Investment Assessment")
@@ -128,17 +197,18 @@ else:
     cols[2].metric("Long-Term View", assessment.long_term_view)
     cols[3].metric("Listing View", assessment.listing_view)
 
-    st.markdown("## 🟢 Why You May Consider It")
-    for item in assessment.pros:
-        st.write(f"• {item}")
-
-    st.markdown("## 🔴 Why You May Not Invest")
-    for item in assessment.cons:
-        st.write(f"• {item}")
-
-    st.markdown("## ⚠️ Risks")
-    for item in assessment.risks:
-        st.write(f"• {item}")
+    with st.expander("Why this assessment?", expanded=True):
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**Reasons to consider**")
+            for item in assessment.pros:
+                st.write(f"• {item}")
+        with right:
+            st.markdown("**Reasons for caution**")
+            for item in assessment.cons:
+                st.write(f"• {item}")
+            for item in assessment.risks:
+                st.write(f"⚠️ {item}")
 
 st.markdown("## 📊 Fundamental Examination")
 fundamental_fields = {
@@ -155,15 +225,14 @@ for column, (label, value) in zip(cols, fundamental_fields.items()):
 st.markdown("## ⚠️ IPO Risk Checklist")
 for item in (
     "Read the latest RHP/DRHP and verify the final price band and issue dates.",
-    "Check whether proceeds are primarily fresh capital or an offer for sale.",
-    "Review revenue, profit, cash flow, debt and promoter holding from the offer document.",
-    "Compare valuation with listed peers rather than relying on grey-market premium alone.",
-    "For SME IPOs, consider liquidity, lot size and post-listing volatility carefully.",
+    "Check revenue, profit, operating cash flow, debt and promoter holding from the offer document.",
+    "Understand how IPO proceeds will be used and whether the issue is mostly fresh capital or OFS.",
+    "Compare valuation with listed peers using consistent earnings and book-value measures.",
+    "For SME IPOs, pay particular attention to lot size, liquidity and post-listing volatility.",
 ):
     st.write(f"• {item}")
 
 st.info(
-    "IPO discovery is now connected to a public calendar with a verified fallback snapshot. "
-    "Financial conclusions remain evidence-gated: missing prospectus fundamentals are shown "
-    "as N/A rather than guessed."
+    "This dashboard is research support, not an application recommendation. IPO data can change; "
+    "verify the latest RHP/DRHP and exchange filings before making an investment decision."
 )
