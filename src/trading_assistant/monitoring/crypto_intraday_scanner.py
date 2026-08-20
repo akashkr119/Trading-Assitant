@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 
 from trading_assistant.data.interfaces import OHLCVBar
@@ -38,6 +40,10 @@ class RobustCryptoIntradayScanner(CryptoIntradayScanner):
         trend_5m = CryptoIntradayScanner._trend_direction(frame_5m)
         trend_15m = CryptoIntradayScanner._trend_direction(frame_15m)
 
+        values = (ema9, ema20, rsi_value, macd_histogram, rvol, trend_5m, trend_15m)
+        if not all(math.isfinite(value) for value in values):
+            return None
+
         bullish_points = sum(
             (
                 ema9 > ema20,
@@ -58,9 +64,11 @@ class RobustCryptoIntradayScanner(CryptoIntradayScanner):
                 rvol >= 1.0,
             )
         )
-        if bullish_points == 0 and bearish_points == 0:
-            return None
 
+        # The strict scanner above intentionally returns only full-confluence
+        # setups. If that rejects the symbol, keep it in the ranked scan as a
+        # near-setup whenever the indicators are valid. This prevents the UI
+        # from showing an empty result simply because the market is mixed.
         bullish = bullish_points >= bearish_points
         points = bullish_points if bullish else bearish_points
         direction = "LONG" if bullish else "SHORT"
