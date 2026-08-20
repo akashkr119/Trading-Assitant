@@ -1,0 +1,1 @@
+NSE dashboard section order: keep all Intraday scanner, selected-stock live analysis, selected stocks to monitor, live intraday signals, and Intraday diagnostics together. Render the Swing Trading Scanner only after all Intraday sections as the final trading section.
