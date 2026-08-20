@@ -29,7 +29,8 @@ journal = SignalJournal()
 
 
 def _render_live_selected_coin(
-    selected_symbol: str, locked_candidate: CryptoCandidate
+    selected_symbol: str,
+    locked_candidate: CryptoCandidate,
 ) -> None:
     """Refresh market indicators while keeping the scanned trade plan immutable."""
     try:
@@ -163,7 +164,8 @@ with limit_col:
 if scan_clicked:
     with st.spinner("Scanning crypto pairs and ranking intraday setups..."):
         st.session_state.crypto_candidates = scanner.scan(
-            datetime.now(timezone.utc), limit=scan_limit
+            datetime.now(timezone.utc),
+            limit=scan_limit,
         )
 
 candidates = st.session_state.get("crypto_candidates", ())
@@ -203,7 +205,8 @@ if candidates:
         key="crypto_selected_symbol",
     )
     selected_candidate = next(
-        (item for item in candidates if item.symbol == selected_symbol), None
+        (item for item in candidates if item.symbol == selected_symbol),
+        None,
     )
     if selected_candidate is not None:
         st.caption(
@@ -217,9 +220,15 @@ if candidates:
 
         live_selected_coin()
     else:
-        st.error("The selected coin is no longer available in this scan. Please select again.")
+        st.error(
+            "The selected coin is no longer available in this scan. "
+            "Please select again."
+        )
 else:
-    st.warning("No ranked crypto setup is available yet. Run a scan to populate opportunities.")
+    st.warning(
+        "No ranked crypto setup is available yet. "
+        "Run a scan to populate opportunities."
+    )
 
 section_header("📒 BUY / SELL Alert History")
 records = journal.records()
