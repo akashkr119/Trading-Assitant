@@ -46,7 +46,6 @@ jobs:
           path = Path("app.py")
           lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
 
-          # Remove the existing nested Swing section and save it as a top-level block.
           swing_idx = next((i for i, line in enumerate(lines) if line.strip() == 'st.subheader("📅 Swing Trading Scanner")'), -1)
           if swing_idx < 0:
               raise SystemExit("Swing header not found")
@@ -61,7 +60,6 @@ jobs:
           swing_text = textwrap.dedent("".join(lines[swing_start:swing_end])).strip()
           del lines[swing_start:swing_end]
 
-          # Remove diagnostics from the middle of the intraday workflow.
           diag_idx = next((i for i, line in enumerate(lines) if line.strip() == "if scanner is not None and scanner.last_scan_count:" and line.startswith("    ")), -1)
           if diag_idx < 0:
               raise SystemExit("Diagnostics start not found")
@@ -72,28 +70,24 @@ jobs:
           del lines[diag_idx:diag_end]
           source = "".join(lines)
 
-          # Two-column status rows are readable on both desktop and mobile.
           old_status = '''status_col, market_col, watch_col, signal_col = st.columns(4)\nwith status_col:\n    st.metric("Broker", "Connected" if connected else "Disconnected")\nwith market_col:\n    st.metric("NSE Market", "OPEN" if market_open else "CLOSED")\nwith watch_col:\n    st.metric("Selected", len(symbols))\nwith signal_col:\n    st.metric("Active Signals", len(st.session_state.results))'''
-          new_status = '''status_rows = [\n    (("Broker", "Connected" if connected else "Disconnected"), ("NSE Market", "OPEN" if market_open else "CLOSED")),\n    (("Selected", len(symbols)), ("Active Signals", len(st.session_state.results))),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for index, (label, value) in enumerate(status_row):\n        status_cols[index].metric(label, value)'''
+          new_status = '''status_rows = [\n    (\n        ("Broker", "Connected" if connected else "Disconnected"),\n        ("NSE Market", "OPEN" if market_open else "CLOSED"),\n    ),\n    (\n        ("Selected", len(symbols)),\n        ("Active Signals", len(st.session_state.results)),\n    ),\n]\nfor status_row in status_rows:\n    status_cols = st.columns(2)\n    for index, (label, value) in enumerate(status_row):\n        status_cols[index].metric(label, value)'''
           if old_status not in source:
               raise SystemExit("Status block not found")
           source = source.replace(old_status, new_status, 1)
 
-          # Two-column indicator rows prevent truncation on mobile.
           old_indicators = '''    cols = st.columns(7)\n    cols[0].metric("Current Price", f"₹{snapshot['price']:.2f}")\n    cols[1].metric("EMA 9", f"₹{snapshot['ema9']:.2f}")\n    cols[2].metric("EMA 20", f"₹{snapshot['ema20']:.2f}")\n    cols[3].metric("RSI", f"{snapshot['rsi']:.1f}")\n    cols[4].metric("MACD Hist", f"{snapshot['macd']:.4f}")\n    cols[5].metric("RVOL", f"{snapshot['rvol']:.2f}x")\n    cols[6].metric("Supertrend", str(snapshot["supertrend"]))'''
           new_indicators = '''    indicator_rows = [\n        (("Current Price", f"₹{snapshot['price']:.2f}"), ("EMA 9", f"₹{snapshot['ema9']:.2f}")),\n        (("EMA 20", f"₹{snapshot['ema20']:.2f}"), ("RSI", f"{snapshot['rsi']:.1f}")),\n        (("MACD Hist", f"{snapshot['macd']:.4f}"), ("RVOL", f"{snapshot['rvol']:.2f}x")),\n        (("Supertrend", str(snapshot["supertrend"])),),\n    ]\n    for indicator_row in indicator_rows:\n        indicator_cols = st.columns(2)\n        for index, (label, value) in enumerate(indicator_row):\n            indicator_cols[index].metric(label, value)'''
           if old_indicators not in source:
               raise SystemExit("Live indicator block not found")
           source = source.replace(old_indicators, new_indicators, 1)
 
-          # Two-column alert-plan rows keep the complete trade plan visible on phones.
           old_plan = '''        plan_cols = st.columns(6)\n        plan_cols[0].metric("Alert Price", f"₹{active_alert.entry:.2f}")\n        plan_cols[1].metric("Stop Loss", f"₹{active_alert.stop_loss:.2f}")\n        plan_cols[2].metric("Target 1", f"₹{active_alert.target_1:.2f}")\n        plan_cols[3].metric("Target 2", f"₹{active_alert.target_2:.2f}")\n        plan_cols[4].metric("Risk : Reward", f"1:{active_alert.risk_reward:.1f}")\n        pnl = _pnl_percent(\n            active_alert.direction,\n            active_alert.entry,\n            float(snapshot["price"]),\n        )\n        plan_cols[5].metric("Current P/L", f"{pnl:+.2f}%")'''
-          new_plan = '''        pnl = _pnl_percent(\n            active_alert.direction,\n            active_alert.entry,\n            float(snapshot["price"]),\n        )\n        plan_rows = [\n            (("Alert Price", f"₹{active_alert.entry:.2f}"), ("Stop Loss", f"₹{active_alert.stop_loss:.2f}")),\n            (("Target 1", f"₹{active_alert.target_1:.2f}"), ("Target 2", f"₹{active_alert.target_2:.2f}")),\n            (("Risk : Reward", f"1:{active_alert.risk_reward:.1f}"), ("Current P/L", f"{pnl:+.2f}%")),\n        ]\n        for plan_row in plan_rows:\n            plan_cols = st.columns(2)\n            for index, (label, value) in enumerate(plan_row):\n                plan_cols[index].metric(label, value)'''
+          new_plan = '''        pnl = _pnl_percent(\n            active_alert.direction,\n            active_alert.entry,\n            float(snapshot["price"]),\n        )\n        plan_rows = [\n            (\n                ("Alert Price", f"₹{active_alert.entry:.2f}"),\n                ("Stop Loss", f"₹{active_alert.stop_loss:.2f}"),\n            ),\n            (\n                ("Target 1", f"₹{active_alert.target_1:.2f}"),\n                ("Target 2", f"₹{active_alert.target_2:.2f}"),\n            ),\n            (\n                ("Risk : Reward", f"1:{active_alert.risk_reward:.1f}"),\n                ("Current P/L", f"{pnl:+.2f}%"),\n            ),\n        ]\n        for plan_row in plan_rows:\n            plan_cols = st.columns(2)\n            for index, (label, value) in enumerate(plan_row):\n                plan_cols[index].metric(label, value)'''
           if old_plan not in source:
               raise SystemExit("Alert plan block not found")
           source = source.replace(old_plan, new_plan, 1)
 
-          # Place diagnostics after all live intraday signals and before help/swing.
           live_call = "\nlive_panel()\n"
           if live_call not in source:
               raise SystemExit("live_panel call not found")
