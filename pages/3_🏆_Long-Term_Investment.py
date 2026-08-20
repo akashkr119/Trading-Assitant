@@ -93,7 +93,11 @@ def _score_rows(rows: list[dict[str, object]]) -> None:
         roe = float(row["ROE"]) if row["ROE"] is not None else 0.0
         profitability = min(100.0, max(0.0, roe * 2.5))
         debt = row["Debt / Equity"]
-        financial = 50.0 if debt is None else min(100.0, max(0.0, 100 - float(debt) * 35))
+        financial = (
+            50.0
+            if debt is None
+            else min(100.0, max(0.0, 100 - float(debt) * 35))
+        )
         cash = 70.0 if row["FCF Positive"] else 30.0
         pe_pct = percentile(row["P/E"], pe_values)
         pb_pct = percentile(row["P/B"], pb_values)
@@ -265,7 +269,9 @@ if not record["FCF Positive"]:
 if record["P/E"] is not None and float(record["P/E"]) > 40:
     risks.append("P/E is elevated relative to the scanned peer universe.")
 if not risks:
-    risks.append("No automatic red flag was triggered; deeper qualitative review is still required.")
+    risks.append(
+        "No automatic red flag was triggered; deeper qualitative review is still required."
+    )
 for risk in risks:
     st.write(f"• {risk}")
 
