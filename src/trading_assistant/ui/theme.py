@@ -20,8 +20,7 @@ CSS = """
 }
 
 .stApp {
-  background: radial-gradient(circle at top right, rgba(41, 211, 230, .055), transparent 34%),
-              var(--ta-bg);
+  background: radial-gradient(circle at top right, rgba(41, 211, 230, .055), transparent 34%), var(--ta-bg);
   color: var(--ta-text);
 }
 
@@ -80,8 +79,6 @@ div[data-testid="stExpander"] {
   background: rgba(15,20,29,.65);
 }
 
-/* Keep wide financial tables usable: horizontal scrolling is local to the table,
-   never to the whole page. */
 [data-testid="stDataFrame"] > div { max-width: 100%; overflow-x: auto; }
 
 @media (max-width: 768px) {
@@ -105,3 +102,33 @@ div[data-testid="stExpander"] {
 def apply_theme() -> None:
     """Apply the shared responsive dark fintech theme."""
     st.markdown(CSS, unsafe_allow_html=True)
+
+
+def inject_responsive_css() -> None:
+    """Backward-compatible alias used by existing Streamlit pages."""
+    apply_theme()
+
+
+def page_header(title: str, subtitle: str = "", accent: str = "gold") -> None:
+    """Render a consistent page header."""
+    accent_colors = {
+        "gold": "#D6A84F",
+        "cyan": "#29D3E6",
+        "green": "#22C55E",
+        "red": "#F04444",
+        "amber": "#F59E0B",
+        "purple": "#8B7CFF",
+    }
+    color = accent_colors.get(accent, accent_colors["gold"])
+    st.markdown(
+        f'<div style="border-left:4px solid {color}; padding:.25rem 0 .35rem .8rem; margin-bottom:1rem;">'
+        f'<h1 style="margin:0;">{title}</h1>'
+        f'<div style="color:var(--ta-muted); margin-top:.2rem;">{subtitle}</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def section_header(title: str) -> None:
+    """Render a compact section heading."""
+    st.markdown(f"### {title}")
