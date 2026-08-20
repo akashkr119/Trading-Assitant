@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, "agent/**"]
+    branches: [main, master, v2-market-intelligence, "agent/**"]
   pull_request:
-    branches: [main]
+    branches: [main, master, v2-market-intelligence]
 
 jobs:
   test:
