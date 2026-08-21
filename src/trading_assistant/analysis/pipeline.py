@@ -8,7 +8,12 @@ import pandas as pd
 
 from trading_assistant.analysis.explanation import SignalExplanation, build_explanation
 from trading_assistant.analysis.risk_plan import RiskPlan, RiskPlanError, build_risk_plan
-from trading_assistant.analysis.setup_detection import SetupCandidate, detect_setups
+from trading_assistant.analysis.setup_detection import (
+    SetupCandidate,
+    SetupDirection,
+    SetupType,
+    detect_setups,
+)
 from trading_assistant.analysis.timeframe import (
     AlignmentResult,
     TimeframeAlignment,
@@ -20,6 +25,7 @@ from trading_assistant.analysis.trade_decision import (
     TradeDecision,
     evaluate_trade,
 )
+from trading_assistant.indicators import ema, macd, relative_volume, supertrend
 
 
 @dataclass(frozen=True)
@@ -57,11 +63,74 @@ _ALIGNMENT_SCORE = {
 }
 
 
+def _trend_continuation_setup(inputs: StockAnalysisInput) -> SetupCandidate | None:
+    """Create a setup when live indicators agree but no one-candle trigger fired."""
+    frame = inputs.frame
+    if len(frame) < 30:
+        return None
+    close = frame["close"]
+    ema9_values = ema(close, 9)
+    ema20_values = ema(close, 20)
+    macd_values = macd(close)
+    relative_volume_values = relative_volume(frame)
+    supertrend_values = supertrend(frame)
+    index = len(frame) - 1
+    price = float(close.iloc[index])
+    ema9_value = float(ema9_values.iloc[index])
+    ema20_value = float(ema20_values.iloc[index])
+    macd_histogram = float(macd_values["histogram"].iloc[index])
+    relative_volume_value = float(relative_volume_values.iloc[index])
+    supertrend_direction = float(supertrend_values["direction"].iloc[index])
+
+    bullish = (
+        price > ema20_value
+        and ema9_value > ema20_value
+        and macd_histogram > 0
+        and supertrend_direction > 0
+        and relative_volume_value >= 1.0
+    )
+    bearish = (
+        price < ema20_value
+        and ema9_value < ema20_value
+        and macd_histogram < 0
+        and supertrend_direction < 0
+        and relative_volume_value >= 1.0
+    )
+    if not bullish and not bearish:
+        return None
+
+    direction = SetupDirection.BULLISH if bullish else SetupDirection.BEARISH
+    confidence = min(95.0, 65.0 + relative_volume_value * 10.0)
+    side = "bullish" if bullish else "bearish"
+    invalidation = (
+        f"Close below EMA 20 for {side} setup"
+        if bullish
+        else f"Close above EMA 20 for {side} setup"
+    )
+    return SetupCandidate(
+        SetupType.TREND_CONTINUATION,
+        direction,
+        index,
+        confidence,
+        (
+            f"price {side} of EMA 20",
+            f"EMA 9 {side} of EMA 20",
+            f"MACD histogram {side}",
+            f"Supertrend {side}",
+            "relative volume >= 1.0",
+        ),
+        invalidation,
+    )
+
+
 def analyze_stock(inputs: StockAnalysisInput) -> StockAnalysisResult | None:
     """Run setup, timeframe, risk, decision and explanation stages for one stock."""
     setups = detect_setups(inputs.frame)
     if not setups:
-        return None
+        fallback = _trend_continuation_setup(inputs)
+        if fallback is None:
+            return None
+        setups = [fallback]
 
     setup = max(setups, key=lambda candidate: candidate.confidence)
     timeframe = evaluate_alignment(list(inputs.timeframe_trends))
