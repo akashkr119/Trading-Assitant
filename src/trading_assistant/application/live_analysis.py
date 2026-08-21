@@ -30,29 +30,30 @@ _TIMEFRAME_LOOKBACKS = {
 
 
 class TechnicalMetadataLoader:
-    """Build transparent technical metadata from broker candles.
+    """Build technical metadata from broker candles for the selected timeframe."""
 
-    Market and sector scores remain neutral until dedicated breadth/sector data
-    sources are connected. This prevents the dashboard from inventing context.
-    """
-
-    def __init__(self, provider: MarketDataProvider) -> None:
+    def __init__(
+        self,
+        provider: MarketDataProvider,
+        analysis_timeframe: Timeframe = Timeframe.ONE_MINUTE,
+    ) -> None:
         self.provider = provider
+        self.analysis_timeframe = analysis_timeframe
 
     def load(self, symbol: str, timestamp: datetime) -> AnalysisMetadata:
-        one_minute = self._bars(symbol, Timeframe.ONE_MINUTE, timestamp)
-        frame = self._frame(one_minute)
+        primary_bars = self._bars(symbol, self.analysis_timeframe, timestamp)
+        frame = self._frame(primary_bars)
         close = frame["close"]
-        ema9 = ema(close, 9)
-        ema20 = ema(close, 20)
+        ema9_values = ema(close, 9)
+        ema20_values = ema(close, 20)
         rsi_values = rsi(close, 14)
         macd_values = macd(close)
         supertrend_values = supertrend(frame)
         relative_volume_values = relative_volume(frame)
 
         latest_close = float(close.iloc[-1])
-        ema9_value = float(ema9.iloc[-1])
-        ema20_value = float(ema20.iloc[-1])
+        ema9_value = float(ema9_values.iloc[-1])
+        ema20_value = float(ema20_values.iloc[-1])
         rsi_value = float(rsi_values.iloc[-1])
         macd_histogram = float(macd_values["histogram"].iloc[-1])
         supertrend_direction = float(supertrend_values["direction"].iloc[-1])
@@ -62,11 +63,11 @@ class TechnicalMetadataLoader:
         ema_aligned = (ema9_value >= ema20_value) == bullish
         supertrend_aligned = (supertrend_direction > 0) == bullish
         macd_aligned = (macd_histogram >= 0) == bullish
-        volume_confirmed = relative_volume_value >= 1.0
+        volume_confirmed = relative_volume_value >= 0.8
         rsi_confirmed = (
-            45.0 <= rsi_value <= 75.0
+            45.0 <= rsi_value <= 80.0
             if bullish
-            else 25.0 <= rsi_value <= 55.0
+            else 20.0 <= rsi_value <= 55.0
         )
 
         stock_score = 50.0
@@ -76,10 +77,24 @@ class TechnicalMetadataLoader:
         stock_score += 10.0 if volume_confirmed else 0.0
         stock_score += 10.0 if rsi_confirmed else 0.0
 
+        confirmation_frame = frame
+        if self.analysis_timeframe != Timeframe.ONE_MINUTE:
+            one_minute = self._bars(symbol, Timeframe.ONE_MINUTE, timestamp)
+            confirmation_frame = self._frame(one_minute)
+        confirmation_supertrend = supertrend(confirmation_frame)
+        confirmation_macd = macd(confirmation_frame)["histogram"]
+        confirmation_rvol = relative_volume(confirmation_frame)
+        confirmation_bullish = float(confirmation_frame["close"].iloc[-1]) >= float(
+            ema(confirmation_frame["close"], 20).iloc[-1]
+        )
+        confirmation_supertrend_aligned = (
+            float(confirmation_supertrend["direction"].iloc[-1]) > 0
+        ) == confirmation_bullish
+        confirmation_macd_aligned = (float(confirmation_macd.iloc[-1]) >= 0) == confirmation_bullish
         confirmation_score = 50.0
-        confirmation_score += 15.0 if supertrend_aligned else 0.0
-        confirmation_score += 15.0 if macd_aligned else 0.0
-        confirmation_score += 20.0 if relative_volume_value >= 1.2 else 0.0
+        confirmation_score += 15.0 if confirmation_supertrend_aligned else 0.0
+        confirmation_score += 15.0 if confirmation_macd_aligned else 0.0
+        confirmation_score += 20.0 if float(confirmation_rvol.iloc[-1]) >= 1.2 else 0.0
 
         entry = latest_close
         recent = frame.tail(20)
@@ -113,6 +128,7 @@ class TechnicalMetadataLoader:
             stop_loss=stop_loss,
             target_1=target_1,
             target_2=target_2,
+            analysis_timeframe=self.analysis_timeframe,
         )
 
     def _bars(
@@ -184,11 +200,12 @@ class LiveAnalysisService:
         self,
         provider: MarketDataProvider,
         signal_dispatcher: SignalDispatcher | None = None,
+        analysis_timeframe: Timeframe = Timeframe.ONE_MINUTE,
     ) -> None:
         self.builder = MarketDataInputBuilder(
             provider,
-            TechnicalMetadataLoader(provider).load,
-            lookback_bars=250,
+            TechnicalMetadataLoader(provider, analysis_timeframe).load,
+            lookback_bars=_TIMEFRAME_LOOKBACKS[analysis_timeframe],
         )
         self.signal_dispatcher = signal_dispatcher
         self.errors: dict[str, str] = {}
