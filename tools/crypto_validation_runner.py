@@ -9,8 +9,8 @@ The workflow can invoke one cycle repeatedly without requiring a browser session
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
 import time
+from datetime import datetime, timedelta, timezone
 
 from trading_assistant.data.crypto import BinanceMarketDataProvider
 from trading_assistant.data.interfaces import Timeframe
