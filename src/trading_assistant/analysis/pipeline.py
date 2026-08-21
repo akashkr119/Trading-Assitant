@@ -126,11 +126,11 @@ def _trend_continuation_setup(inputs: StockAnalysisInput) -> SetupCandidate | No
 def analyze_stock(inputs: StockAnalysisInput) -> StockAnalysisResult | None:
     """Run setup, timeframe, risk, decision and explanation stages for one stock."""
     setups = detect_setups(inputs.frame)
+    fallback = _trend_continuation_setup(inputs)
+    if fallback is not None:
+        setups.append(fallback)
     if not setups:
-        fallback = _trend_continuation_setup(inputs)
-        if fallback is None:
-            return None
-        setups = [fallback]
+        return None
 
     setup = max(setups, key=lambda candidate: candidate.confidence)
     timeframe = evaluate_alignment(list(inputs.timeframe_trends))
