@@ -56,17 +56,31 @@ metrics = st.columns(6)
 metrics[0].metric("Trades", result.total_trades)
 metrics[1].metric("Win Rate", f"{result.win_rate:.1f}%")
 metrics[2].metric("Expectancy", f"{result.expectancy_r:+.2f}R")
-metrics[3].metric("Profit Factor", "N/A" if result.profit_factor is None else f"{result.profit_factor:.2f}")
+profit_factor = (
+    "N/A" if result.profit_factor is None else f"{result.profit_factor:.2f}"
+)
+metrics[3].metric("Profit Factor", profit_factor)
 metrics[4].metric("Total Return", f"{result.total_r:+.2f}R")
 metrics[5].metric("Max Drawdown", f"-{result.max_drawdown_r:.2f}R")
 
 if result.expectancy_r > 0:
-    st.success("🟢 Positive sample expectancy. Validate with out-of-sample data before relying on it.")
+    st.success(
+        "🟢 Positive sample expectancy. Validate with out-of-sample data "
+        "before relying on it."
+    )
 else:
-    st.warning("🟡 Non-positive sample expectancy. Do not promote this configuration without further testing.")
+    st.warning(
+        "🟡 Non-positive sample expectancy. Do not promote this configuration "
+        "without further testing."
+    )
 
 section_header("🧪 Paper Trading")
-capital = st.number_input("Virtual starting capital", min_value=10_000.0, value=1_000_000.0, step=10_000.0)
+capital = st.number_input(
+    "Virtual starting capital",
+    min_value=10_000.0,
+    value=1_000_000.0,
+    step=10_000.0,
+)
 quantity = st.number_input("Example quantity", min_value=1, value=100, step=1)
 entry = st.number_input("Example entry", min_value=0.01, value=100.0, step=1.0)
 mark = st.number_input("Current mark", min_value=0.01, value=105.0, step=1.0)
@@ -76,8 +90,14 @@ portfolio.open_position(
 )
 paper_cols = st.columns(3)
 paper_cols[0].metric("Available Cash", f"₹{portfolio.realized_free_cash:,.0f}")
-paper_cols[1].metric("Marked Value", f"₹{portfolio.mark_to_market({'DEMO': mark}):,.0f}")
-paper_cols[2].metric("Paper P/L", f"₹{portfolio.positions[0].unrealized_pnl(mark):,.0f}")
+paper_cols[1].metric(
+    "Marked Value",
+    f"₹{portfolio.mark_to_market({'DEMO': mark}):,.0f}",
+)
+paper_cols[2].metric(
+    "Paper P/L",
+    f"₹{portfolio.positions[0].unrealized_pnl(mark):,.0f}",
+)
 st.info("Paper positions are local simulation only; no broker order is sent.")
 
 section_header("📔 Trade Journal")
