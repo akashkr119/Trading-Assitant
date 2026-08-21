@@ -110,6 +110,114 @@ def _record_scan_alerts(candidates: tuple[CryptoCandidate, ...], timestamp: date
         )
 
 
+def _find_open_record(candidate: CryptoCandidate) -> SignalRecord | None:
+    """Find the journal record that belongs to the currently displayed plan."""
+    records = journal.records()
+    matches = [
+        record
+        for record in records
+        if record.market == "CRYPTO"
+        and record.symbol == candidate.symbol
+        and record.direction == candidate.direction
+        and record.status == "OPEN"
+        and abs(record.entry - candidate.entry) / max(candidate.entry, 1e-12) < 0.0005
+    ]
+    return matches[-1] if matches else None
+
+
+def _update_trade_outcome(candidate: CryptoCandidate, live_price: float) -> SignalRecord | None:
+    """Persist target/stop milestones and close the paper trade when resolved."""
+    record = _find_open_record(candidate)
+    if record is None:
+        return None
+
+    long = candidate.direction == "LONG"
+    target_1_hit = live_price >= candidate.target_1 if long else live_price <= candidate.target_1
+    target_2_hit = live_price >= candidate.target_2 if long else live_price <= candidate.target_2
+    stop_hit = live_price <= candidate.stop_loss if long else live_price >= candidate.stop_loss
+
+    new_t1 = target_1_hit and not record.target_1_achieved
+    new_t2 = target_2_hit and not record.target_2_achieved
+    new_stop = stop_hit and not record.stop_loss_hit
+
+    if new_t2:
+        journal.update_live_state(
+            record.signal_id,
+            target_1_achieved=True,
+            target_2_achieved=True,
+            stop_loss_hit=False,
+            sell_price=candidate.target_2,
+        )
+        journal.resolve(
+            record.signal_id,
+            status="TARGET_2",
+            exit_price=candidate.target_2,
+            outcome_r=candidate.risk_reward,
+            resolved_at=datetime.now(timezone.utc),
+        )
+        st.rerun()
+    elif new_stop:
+        journal.update_live_state(
+            record.signal_id,
+            target_1_achieved=False,
+            target_2_achieved=False,
+            stop_loss_hit=True,
+            sell_price=candidate.stop_loss,
+        )
+        journal.resolve(
+            record.signal_id,
+            status="STOP_LOSS",
+            exit_price=candidate.stop_loss,
+            outcome_r=-1.0,
+            resolved_at=datetime.now(timezone.utc),
+        )
+        st.rerun()
+    elif new_t1:
+        journal.update_live_state(
+            record.signal_id,
+            target_1_achieved=True,
+            target_2_achieved=False,
+            stop_loss_hit=False,
+            sell_price=candidate.target_1,
+        )
+        st.rerun()
+
+    records = journal.records()
+    return next((item for item in records if item.signal_id == record.signal_id), record)
+
+
+def _render_trade_outcome(record: SignalRecord | None, candidate: CryptoCandidate, live_price: float) -> None:
+    """Show live target/stop progress and the persisted outcome state."""
+    section_header("🎯 Trade Outcome Tracking")
+    if record is None:
+        st.info("Outcome tracking starts when this confirmed alert is saved in the journal.")
+        return
+
+    if record.status == "TARGET_2":
+        st.success(
+            f"🎯 TARGET 2 ACHIEVED — {candidate.symbol} · "
+            f"exit {record.exit_price:.8g} · +{record.outcome_r:.1f}R"
+        )
+    elif record.status == "STOP_LOSS":
+        st.error(
+            f"🛑 STOP LOSS HIT — {candidate.symbol} · "
+            f"exit {record.exit_price:.8g} · {record.outcome_r:.1f}R"
+        )
+    else:
+        if record.target_1_achieved:
+            st.success(f"🎯 TARGET 1 ACHIEVED — {candidate.target_1:.8g}")
+        else:
+            st.info(f"🎯 Target 1 pending — {candidate.target_1:.8g}")
+        if record.target_2_achieved:
+            st.success(f"🏆 TARGET 2 ACHIEVED — {candidate.target_2:.8g}")
+        else:
+            st.info(f"🏆 Target 2 pending — {candidate.target_2:.8g}")
+        st.caption(
+            f"Live price {live_price:.8g} · stop {candidate.stop_loss:.8g} · "
+            "outcome is checked every 5 seconds."
+        )
+
+
 def _render_live_selected_coin(
     selected_symbol: str,
     locked_candidate: CryptoCandidate,
@@ -122,6 +230,8 @@ def _render_live_selected_coin(
         return
 
     candidate = locked_candidate
+    outcome_record = _update_trade_outcome(candidate, snapshot.price)
+
     section_header(f"📈 {snapshot.symbol} Live Analysis")
     st.caption(
         f"Live snapshot: {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')} · "
@@ -199,6 +309,8 @@ def _render_live_selected_coin(
             f"Scan score is locked from {scan_time.strftime('%Y-%m-%d %H:%M:%S UTC')}; "
             "live confirmation is recalculated every 5 seconds."
         )
+
+    _render_trade_outcome(outcome_record, candidate, snapshot.price)
 
     entry_distance = abs(snapshot.price - candidate.entry) / candidate.entry * 100
     entry_status = (
@@ -281,7 +393,7 @@ if candidates:
     if selected_candidate is not None:
         st.caption(
             "Live indicators update automatically. Entry, stop and targets remain "
-            "locked to the latest scan."
+            "locked to the latest scan. Target/stop outcomes are persisted to history."
         )
 
         @st.fragment(run_every="5s")
@@ -291,6 +403,20 @@ if candidates:
         live_selected_coin()
 else:
     st.warning("No ranked crypto setup is available yet. Run a scan to populate opportunities.")
+
+section_header("📊 Crypto Accuracy & Outcome Summary")
+summary = journal.summary()
+summary_cols = st.columns(6)
+summary_cols[0].metric("Total Alerts", summary.total)
+summary_cols[1].metric("Closed", summary.total - summary.open)
+summary_cols[2].metric("Accuracy / Win Rate", f"{summary.win_rate:.1f}%")
+summary_cols[3].metric("Target 1 Hit Rate", f"{summary.target_1_rate:.1f}%")
+summary_cols[4].metric("Target 2 Hit Rate", f"{summary.target_2_rate:.1f}%")
+summary_cols[5].metric("Average R", f"{summary.average_r:+.2f}R")
+st.caption(
+    f"Wins: {summary.wins} · Losses: {summary.losses} · Open: {summary.open} · "
+    f"Profit factor: {summary.profit_factor:.2f} · Max drawdown: {summary.max_drawdown_r:.2f}R"
+)
 
 section_header("📒 BUY / SELL Alert History")
 records = [record for record in journal.records() if record.market == "CRYPTO"]
@@ -305,7 +431,12 @@ if records:
                 "Stop Loss": f"{record.stop_loss:.8g}",
                 "Target 1": f"{record.target_1:.8g}",
                 "Target 2": f"{record.target_2:.8g}",
+                "T1 Achieved": "✅" if record.target_1_achieved else "—",
+                "T2 Achieved": "✅" if record.target_2_achieved else "—",
+                "Stop Hit": "🛑" if record.stop_loss_hit else "—",
+                "Exit": f"{record.exit_price:.8g}" if record.exit_price is not None else "—",
                 "Status": record.status,
+                "Outcome": f"{record.outcome_r:+.1f}R" if record.outcome_r is not None else "OPEN",
                 "Score": f"{record.score:.0f}/100",
             }
             for record in reversed(records)
