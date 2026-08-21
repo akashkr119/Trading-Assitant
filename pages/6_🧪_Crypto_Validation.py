@@ -73,7 +73,9 @@ def _status_label(row: pd.Series) -> str:
 def _prepare_table(frame: pd.DataFrame) -> pd.DataFrame:
     table = frame.copy()
     table["Time"] = table["timestamp"].dt.strftime("%d %b %H:%M")
-    table["Side"] = table["direction"].map({"LONG": "🟢 BUY", "SHORT": "🔴 SELL"}).fillna(table["direction"])
+    table["Side"] = table["direction"].map(
+        {"LONG": "🟢 BUY", "SHORT": "🔴 SELL"}
+    ).fillna(table["direction"])
     table["Status"] = table.apply(_status_label, axis=1)
     table["Entry"] = table["entry"].map(lambda value: f"{value:.8g}")
     table["SL"] = table["stop_loss"].map(lambda value: f"{value:.8g}")
@@ -120,7 +122,8 @@ page_header(
 left, right = st.columns([4, 1])
 with left:
     st.caption(
-        "This page reads the persisted validation journal. It does not control the live Crypto dashboard."
+        "This page reads the persisted validation journal. "
+        "It does not control the live Crypto dashboard."
     )
 with right:
     if st.button("🔄 Refresh Data", use_container_width=True):
@@ -171,9 +174,13 @@ with summary_cols[1]:
     st.metric("Losing Trades", len(losses))
 with summary_cols[2]:
     if not closed.empty:
-        st.progress(min(max(win_rate / 100, 0.0), 1.0), text=f"Closed-trade win rate: {win_rate:.1f}%")
+        st.progress(
+            min(max(win_rate / 100, 0.0), 1.0),
+            text=f"Closed-trade win rate: {win_rate:.1f}%",
+        )
         st.caption(
-            f"Total realized performance: {total_r:+.2f}R · Average closed trade: {average_r:+.2f}R"
+            f"Total realized performance: {total_r:+.2f}R · "
+            f"Average closed trade: {average_r:+.2f}R"
         )
     else:
         st.caption("Waiting for the first closed validation trade.")
