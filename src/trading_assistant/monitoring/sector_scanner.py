@@ -15,6 +15,7 @@ SECTOR_INDEXES = (
     "NIFTY AUTO",
     "NIFTY BANK",
     "NIFTY FINANCIAL SERVICES",
+    "NIFTY FIN SERVICE",
     "NIFTY FMCG",
     "NIFTY IT",
     "NIFTY METAL",
@@ -29,9 +30,6 @@ SECTOR_INDEXES = (
     "NIFTY OIL & GAS",
 )
 
-# Broad classification for the symbols most likely to appear in the live
-# most-active universe. Unknown symbols remain "Other" rather than being
-# guessed.
 _SYMBOL_SECTORS = {
     "HDFCBANK": "Banking",
     "ICICIBANK": "Banking",
@@ -98,7 +96,6 @@ class SectorSnapshot:
 
     @property
     def score(self) -> float:
-        # 50 is neutral; +/-5% maps to approximately 0-100.
         return max(0.0, min(100.0, 50.0 + self.change_pct * 10.0))
 
 
@@ -124,11 +121,16 @@ def _fetch_all_indices() -> list[dict[str, object]]:
 def sector_performance() -> tuple[SectorSnapshot, ...]:
     """Return live sector-index performance from NSE, ranked strongest first."""
     rows = _fetch_all_indices()
+    aliases = {
+        "NIFTY FIN SERVICE": "NIFTY FINANCIAL SERVICES",
+    }
     wanted = {name.upper(): name for name in SECTOR_INDEXES}
     snapshots: list[SectorSnapshot] = []
+    seen: set[str] = set()
     for row in rows:
-        name = str(row.get("index", "")).strip().upper()
-        if name not in wanted:
+        raw_name = str(row.get("index", "")).strip().upper()
+        name = aliases.get(raw_name, raw_name)
+        if name not in wanted or name in seen:
             continue
         try:
             change = float(row.get("percentChange", 0.0) or 0.0)
@@ -140,4 +142,5 @@ def sector_performance() -> tuple[SectorSnapshot, ...]:
         snapshots.append(
             SectorSnapshot(wanted[name], change, advances, declines, unchanged)
         )
+        seen.add(name)
     return tuple(sorted(snapshots, key=lambda item: item.change_pct, reverse=True))
