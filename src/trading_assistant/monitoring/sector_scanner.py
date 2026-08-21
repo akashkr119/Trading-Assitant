@@ -30,59 +30,31 @@ SECTOR_INDEXES = (
     "NIFTY OIL & GAS",
 )
 
+# NSE maintains a four-level industry classification. This application keeps
+# a compact sector view for the intraday dashboard; unknown symbols remain
+# "Other" rather than being assigned an invented sector.
 _SYMBOL_SECTORS = {
-    "HDFCBANK": "Banking",
-    "ICICIBANK": "Banking",
-    "SBIN": "Banking",
-    "AXISBANK": "Banking",
-    "KOTAKBANK": "Banking",
-    "INDUSINDBK": "Banking",
-    "BAJFINANCE": "Financial Services",
-    "BAJAJFINSV": "Financial Services",
-    "SHRIRAMFIN": "Financial Services",
-    "HDFCLIFE": "Insurance",
-    "SBILIFE": "Insurance",
-    "RELIANCE": "Energy",
-    "ONGC": "Energy",
-    "NTPC": "Power",
-    "POWERGRID": "Power",
-    "TCS": "IT",
-    "INFY": "IT",
-    "HCLTECH": "IT",
-    "WIPRO": "IT",
-    "TECHM": "IT",
-    "LTIM": "IT",
-    "TATAMOTORS": "Auto",
-    "EICHERMOT": "Auto",
-    "HEROMOTOCO": "Auto",
-    "MARUTI": "Auto",
-    "BAJAJ-AUTO": "Auto",
-    "SUNPHARMA": "Pharma",
-    "CIPLA": "Pharma",
-    "DRREDDY": "Pharma",
-    "APOLLOHOSP": "Healthcare",
-    "MAXHEALTH": "Healthcare",
-    "TATASTEEL": "Metal",
-    "JSWSTEEL": "Metal",
-    "HINDALCO": "Metal",
-    "COALINDIA": "Metal",
-    "ITC": "FMCG",
-    "HINDUNILVR": "FMCG",
-    "NESTLEIND": "FMCG",
-    "BRITANNIA": "FMCG",
-    "TATACONSUM": "FMCG",
-    "ULTRACEMCO": "Cement",
-    "GRASIM": "Cement",
-    "ASIANPAINT": "Consumer",
-    "TITAN": "Consumer",
-    "TRENT": "Retail",
-    "BEL": "Defence",
-    "HAL": "Defence",
-    "ADANIENT": "Infrastructure",
-    "ADANIPORTS": "Infrastructure",
-    "LT": "Infrastructure",
-    "BHARTIARTL": "Telecom",
-    "ETERNAL": "Consumer Internet",
+    "HDFCBANK": "Banking", "ICICIBANK": "Banking", "SBIN": "Banking",
+    "AXISBANK": "Banking", "KOTAKBANK": "Banking", "INDUSINDBK": "Banking",
+    "BAJFINANCE": "Financial Services", "BAJAJFINSV": "Financial Services",
+    "SHRIRAMFIN": "Financial Services", "IIFL": "Financial Services",
+    "HDFCLIFE": "Insurance", "SBILIFE": "Insurance",
+    "RELIANCE": "Energy", "ONGC": "Energy", "NTPC": "Power", "POWERGRID": "Power",
+    "TCS": "IT", "INFY": "IT", "HCLTECH": "IT", "WIPRO": "IT", "TECHM": "IT",
+    "LTIM": "IT", "TATAMOTORS": "Auto", "EICHERMOT": "Auto",
+    "HEROMOTOCO": "Auto", "MARUTI": "Auto", "BAJAJ-AUTO": "Auto", "JBMA": "Auto",
+    "SUNPHARMA": "Pharma", "CIPLA": "Pharma", "DRREDDY": "Pharma",
+    "APOLLOHOSP": "Healthcare", "MAXHEALTH": "Healthcare",
+    "TATASTEEL": "Metal", "JSWSTEEL": "Metal", "HINDALCO": "Metal",
+    "COALINDIA": "Energy", "ITC": "FMCG", "HINDUNILVR": "FMCG",
+    "NESTLEIND": "FMCG", "BRITANNIA": "FMCG", "TATACONSUM": "FMCG",
+    "ULTRACEMCO": "Cement", "GRASIM": "Cement", "ASIANPAINT": "Consumer",
+    "TITAN": "Consumer Durables", "TRENT": "Retail", "MOTISONS": "Retail",
+    "PCJEWELLER": "Consumer Durables", "BEL": "Defence", "HAL": "Defence",
+    "DATAPATTNS": "Defence", "ADANIENT": "Infrastructure", "ADANIPORTS": "Infrastructure",
+    "LT": "Infrastructure", "BHARTIARTL": "Telecom", "ETERNAL": "Consumer Internet",
+    "BAJAJHIND": "FMCG", "ALLCARGO": "Commercial & Transport Services",
+    "SHIPROCKET": "Commercial & Transport Services", "FCL": "Chemicals",
 }
 
 
@@ -96,10 +68,14 @@ class SectorSnapshot:
 
     @property
     def score(self) -> float:
-        return max(0.0, min(100.0, 50.0 + self.change_pct * 10.0))
+        breadth = self.advances - self.declines
+        total = self.advances + self.declines + self.unchanged
+        breadth_score = 50.0 + (breadth / total * 50.0 if total else 0.0)
+        return max(0.0, min(100.0, 0.7 * (50.0 + self.change_pct * 10.0) + 0.3 * breadth_score))
 
 
 def symbol_sector(symbol: str) -> str:
+    """Return the dashboard sector; unknown symbols are explicitly Other."""
     return _SYMBOL_SECTORS.get(symbol.upper().strip(), "Other")
 
 
@@ -121,9 +97,7 @@ def _fetch_all_indices() -> list[dict[str, object]]:
 def sector_performance() -> tuple[SectorSnapshot, ...]:
     """Return live sector-index performance from NSE, ranked strongest first."""
     rows = _fetch_all_indices()
-    aliases = {
-        "NIFTY FIN SERVICE": "NIFTY FINANCIAL SERVICES",
-    }
+    aliases = {"NIFTY FIN SERVICE": "NIFTY FINANCIAL SERVICES"}
     wanted = {name.upper(): name for name in SECTOR_INDEXES}
     snapshots: list[SectorSnapshot] = []
     seen: set[str] = set()
@@ -143,4 +117,4 @@ def sector_performance() -> tuple[SectorSnapshot, ...]:
             SectorSnapshot(wanted[name], change, advances, declines, unchanged)
         )
         seen.add(name)
-    return tuple(sorted(snapshots, key=lambda item: item.change_pct, reverse=True))
+    return tuple(sorted(snapshots, key=lambda item: item.score, reverse=True))
