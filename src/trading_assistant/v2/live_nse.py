@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trading_assistant.v2.market_regime import MarketObservation, MarketRegimeResult, classify_market_regime
+from trading_assistant.v2.market_regime import (
+    MarketObservation,
+    MarketRegimeResult,
+    classify_market_regime,
+)
 
 
 @dataclass(frozen=True)
