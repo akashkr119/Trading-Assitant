@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import time
 
@@ -136,7 +136,11 @@ def _broker_name() -> BrokerName:
     return BrokerName(value)
 
 
-def run_cycle(scanner: MarketScanner, service: LiveAnalysisService, journal: SignalJournal) -> None:
+def run_cycle(
+    scanner: MarketScanner,
+    service: LiveAnalysisService,
+    journal: SignalJournal,
+) -> None:
     now = datetime.now(IST)
     candidates = scanner.scan(now, limit=60)
     alert_candidates = candidates[:20]
@@ -148,6 +152,7 @@ def run_cycle(scanner: MarketScanner, service: LiveAnalysisService, journal: Sig
         now,
     )
     summary = journal.summary()
+    total_r = sum(r.outcome_r or 0.0 for r in journal.records())
     print(
         f"{now:%H:%M:%S} IST | NSE VALIDATOR ALIVE | "
         f"scanned={scanner.last_scan_count} "
@@ -156,7 +161,7 @@ def run_cycle(scanner: MarketScanner, service: LiveAnalysisService, journal: Sig
         f"BUY/SELL recorded={recorded} "
         f"T1={t1_count} T2={t2_count} SL={stop_count} "
         f"open={summary.open} closed={summary.total - summary.open} "
-        f"win-rate={summary.win_rate:.1f}% total-R={sum(r.outcome_r or 0.0 for r in journal.records()):+.2f}R",
+        f"win-rate={summary.win_rate:.1f}% total-R={total_r:+.2f}R",
         flush=True,
     )
     if service.errors:
@@ -171,10 +176,18 @@ def _sleep_until_market(provider, poll_seconds: int) -> bool:
     while not provider.is_market_open():
         now = datetime.now(IST)
         if now.weekday() >= 5:
-            print(f"{now:%Y-%m-%d %H:%M:%S} IST | NSE closed (weekend). Exiting.", flush=True)
+            print(
+                f"{now:%Y-%m-%d %H:%M:%S} IST | "
+                "NSE closed (weekend). Exiting.",
+                flush=True,
+            )
             return False
         if now.hour > 15 or (now.hour == 15 and now.minute >= 31):
-            print(f"{now:%Y-%m-%d %H:%M:%S} IST | NSE session finished. Exiting.", flush=True)
+            print(
+                f"{now:%Y-%m-%d %H:%M:%S} IST | "
+                "NSE session finished. Exiting.",
+                flush=True,
+            )
             return False
         print(
             f"{now:%Y-%m-%d %H:%M:%S} IST | NSE market closed; "
