@@ -90,7 +90,9 @@ class TechnicalMetadataLoader:
         confirmation_supertrend_aligned = (
             float(confirmation_supertrend["direction"].iloc[-1]) > 0
         ) == confirmation_bullish
-        confirmation_macd_aligned = (float(confirmation_macd.iloc[-1]) >= 0) == confirmation_bullish
+        confirmation_macd_aligned = (
+            float(confirmation_macd.iloc[-1]) >= 0
+        ) == confirmation_bullish
         confirmation_score = 50.0
         confirmation_score += 15.0 if confirmation_supertrend_aligned else 0.0
         confirmation_score += 15.0 if confirmation_macd_aligned else 0.0
@@ -200,7 +202,7 @@ class LiveAnalysisService:
         self,
         provider: MarketDataProvider,
         signal_dispatcher: SignalDispatcher | None = None,
-        analysis_timeframe: Timeframe = Timeframe.ONE_MINUTE,
+        analysis_timeframe: Timeframe = Timeframe.FIVE_MINUTES,
     ) -> None:
         self.builder = MarketDataInputBuilder(
             provider,
