@@ -35,7 +35,7 @@ _NSE_ACTIVE_URL = "https://www.nseindia.com/api/live-analysis-most-active-securi
 
 @dataclass(frozen=True)
 class ScanCandidate:
-    """A ranked candidate awaiting detailed multi-timeframe analysis."""
+    """A ranked candidate with market bias awaiting detailed trade analysis."""
 
     symbol: str
     direction: str
@@ -185,7 +185,7 @@ class MarketScanner:
             )
         )
         bullish = bullish_votes >= bearish_votes
-        direction = "BUY" if bullish else "SELL"
+        bias = "BULLISH" if bullish else "BEARISH"
         directional_votes = bullish_votes if bullish else bearish_votes
         momentum = min(abs(change_pct) / 1.5, 1.0) * 15.0
         volume_points = min(relative_volume_value / 2.0, 1.0) * 20.0
@@ -200,7 +200,7 @@ class MarketScanner:
         )
         return ScanCandidate(
             symbol=symbol,
-            direction=direction,
+            direction=bias,
             score=round(score, 1),
             price=latest,
             change_pct=change_pct,
