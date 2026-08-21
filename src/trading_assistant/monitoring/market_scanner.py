@@ -193,10 +193,12 @@ class MarketScanner:
         score = min(score, 100.0)
 
         reason = (
+            f"Market bias: {bias}. "
             f"EMA {'bullish' if bullish else 'bearish'}, "
             f"MACD {'positive' if macd_histogram > 0 else 'negative'}, "
             f"RSI {rsi_value:.1f}, RVOL {relative_volume_value:.2f}x, "
-            f"5m move {change_pct:+.2f}%"
+            f"5m move {change_pct:+.2f}%. "
+            "Formal BUY/SELL requires live trade confirmation."
         )
         return ScanCandidate(
             symbol=symbol,
