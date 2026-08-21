@@ -1,5 +1,6 @@
 """Live NSE intraday command center."""
 
+from collections import defaultdict
 from datetime import datetime
 
 import pandas as pd
@@ -38,6 +39,7 @@ journal = SignalJournal("reports/nse_signal_journal.csv")
 
 for key, default in {
     "nse_candidates": (),
+    "nse_alert_candidates": (),
     "nse_last_scan": None,
     "nse_alert_diagnostics": (),
     "nse_sector_rows": (),
@@ -207,16 +209,27 @@ def _update_outcomes(symbol: str, price: float, now: datetime) -> None:
             )
 
 
+def _top_by_sector(candidates, limit: int = 10):
+    grouped = defaultdict(list)
+    for candidate in candidates:
+        grouped[symbol_sector(candidate.symbol)].append(candidate)
+    return {
+        sector: tuple(sorted(items, key=lambda item: item.score, reverse=True)[:limit])
+        for sector, items in grouped.items()
+    }
+
+
 def _run_market_alert_engine() -> None:
     now = datetime.now(IST)
     try:
-        candidates = scanner.scan(now, limit=10)
-        results = service.analyze([item.symbol for item in candidates], now)
+        universe_candidates = scanner.scan(now, limit=60)
+        alert_candidates = universe_candidates[:20]
+        results = service.analyze([item.symbol for item in alert_candidates], now)
         for result in results:
             _record_result(result, now)
         diagnostics = []
         result_by_symbol = {item.symbol: item for item in results}
-        for candidate in candidates:
+        for candidate in alert_candidates:
             result = result_by_symbol.get(candidate.symbol)
             diagnostics.append(
                 {
@@ -240,7 +253,8 @@ def _run_market_alert_engine() -> None:
                     ),
                 }
             )
-        st.session_state.nse_candidates = candidates
+        st.session_state.nse_candidates = universe_candidates
+        st.session_state.nse_alert_candidates = alert_candidates
         st.session_state.nse_alert_diagnostics = tuple(diagnostics)
         st.session_state.nse_last_scan = now
     except Exception as error:
@@ -254,8 +268,8 @@ if not st.session_state.nse_auto_started:
 st.divider()
 section_header("🧭 Market-Wide Alert Engine")
 st.caption(
-    "The alert engine scans the live NSE most-active universe and analyses the "
-    "top candidates automatically. It is not limited to the selected stock."
+    "The engine discovers current NSE movers, ranks them across sectors, and "
+    "checks the strongest candidates for formal BUY/SELL confirmation."
 )
 scan_col, status_col = st.columns([1, 3])
 with scan_col:
@@ -270,6 +284,7 @@ with status_col:
             "automatic re-scan every 60 seconds"
         )
 
+
 @st.fragment(run_every=60)
 def _alert_refresh() -> None:
     if provider.is_market_open():
@@ -280,36 +295,46 @@ _alert_refresh()
 
 candidates = st.session_state.nse_candidates
 if candidates:
-    section_header("🔥 Best NSE Intraday Opportunities")
-    table = []
-    for index, item in enumerate(candidates, 1):
-        table.append(
-            {
-                "Rank": index,
-                "Symbol": item.symbol,
-                "Sector": symbol_sector(item.symbol),
-                "Bias": item.direction,
-                "Score": f"{item.score:.0f}/100",
-                "Price": f"₹{item.price:.2f}",
-                "5m Move": f"{item.change_pct:+.2f}%",
-                "RVOL": f"{item.relative_volume:.2f}x",
-            }
-        )
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    section_header("🏆 Sector-wise Intraday Opportunities")
+    st.caption("Up to the best 10 ranked movers are shown in each discovered sector.")
+    sector_groups = _top_by_sector(candidates, limit=10)
+    for sector in sorted(sector_groups):
+        items = sector_groups[sector]
+        with st.expander(f"{sector} · {len(items)} active candidates", expanded=False):
+            st.dataframe(
+                [
+                    {
+                        "Rank": rank,
+                        "Symbol": item.symbol,
+                        "Bias": item.direction,
+                        "Score": f"{item.score:.0f}/100",
+                        "Price": f"₹{item.price:.2f}",
+                        "5m Move": f"{item.change_pct:+.2f}%",
+                        "RVOL": f"{item.relative_volume:.2f}x",
+                    }
+                    for rank, item in enumerate(items, 1)
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
 
-    sector_options = ["All sectors"] + sorted({symbol_sector(item.symbol) for item in candidates})
+    sector_options = ["All sectors"] + sorted(sector_groups)
     selected_sector = st.selectbox("Sector filter", sector_options)
     sector_candidates = (
         candidates
         if selected_sector == "All sectors"
-        else tuple(item for item in candidates if symbol_sector(item.symbol) == selected_sector)
+        else sector_groups.get(selected_sector, ())
     )
     symbols = [item.symbol for item in sector_candidates]
     if symbols:
         selected = st.selectbox(
             "🎯 Select stock for live terminal",
             symbols,
-            index=(symbols.index(st.session_state.nse_selected) if st.session_state.nse_selected in symbols else 0),
+            index=(
+                symbols.index(st.session_state.nse_selected)
+                if st.session_state.nse_selected in symbols
+                else 0
+            ),
             key="nse_selected_widget",
         )
         st.session_state.nse_selected = selected
@@ -466,21 +491,3 @@ def _terminal_refresh() -> None:
 
 if st.session_state.nse_selected:
     _terminal_refresh()
-
-section_header("🔬 Why Did / Didn't I Get a BUY or SELL?")
-if st.session_state.nse_alert_diagnostics:
-    st.dataframe(
-        list(st.session_state.nse_alert_diagnostics),
-        use_container_width=True,
-        hide_index=True,
-    )
-    st.caption(
-        "This diagnostic table is intentional: when no BUY/SELL appears, the exact "
-        "decision and blocker are visible instead of silently showing WATCH."
-    )
-
-open_alerts = [record for record in journal.records() if record.status == "OPEN"]
-if open_alerts:
-    st.success(f"{len(open_alerts)} active NSE trade alert(s) are currently locked in the journal.")
-else:
-    st.info("No active NSE BUY/SELL alert is locked right now. This is different from a scanner BULLISH/BEARISH bias.")
