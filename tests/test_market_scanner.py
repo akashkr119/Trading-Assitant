@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from trading_assistant.data.interfaces import OHLCVBar
+from trading_assistant.monitoring import market_scanner
 from trading_assistant.monitoring.market_scanner import MarketScanner
 
 
@@ -36,3 +37,20 @@ def test_market_scanner_returns_ranked_candidates() -> None:
     assert result[0].direction == "BUY"
     assert result[0].score >= 50.0
     assert result[0].price > 100.0
+
+
+def test_market_scanner_uses_live_nse_universe(monkeypatch) -> None:
+    calls = []
+
+    def fake_active(activity, limit=40):
+        calls.append(activity)
+        return ("AAA", "BBB")
+
+    monkeypatch.setattr(market_scanner, "_nse_active_symbols", fake_active)
+    scanner = MarketScanner(FakeProvider())
+
+    result = scanner.scan(datetime(2026, 8, 18, 10, 0), limit=2)
+
+    assert {item.symbol for item in result} == {"AAA", "BBB"}
+    assert calls == ["volume", "value"]
+    assert scanner.last_universe_source == "NSE most-active"
