@@ -10,7 +10,6 @@ from trading_assistant.application.live_analysis import TechnicalMetadataLoader
 from trading_assistant.data.interfaces import Timeframe
 from trading_assistant.data.market_calendar import IST
 from trading_assistant.indicators import ema, macd, relative_volume, rsi, supertrend
-from trading_assistant.monitoring.market_scanner import MarketScanner
 from trading_assistant.monitoring.sector_scanner import sector_performance, symbol_sector
 from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
 from trading_assistant.ui.theme import apply_theme, page_header, section_header
