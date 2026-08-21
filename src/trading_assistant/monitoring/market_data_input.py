@@ -27,6 +27,7 @@ class AnalysisMetadata:
     stop_loss: float
     target_1: float
     target_2: float
+    analysis_timeframe: Timeframe = Timeframe.ONE_MINUTE
 
 
 class MarketDataInputBuilder:
@@ -47,10 +48,17 @@ class MarketDataInputBuilder:
     def build(self, symbol: str, timestamp: datetime) -> StockAnalysisInput:
         """Fetch, validate, and assemble one complete analysis input."""
         metadata = self.metadata_loader(symbol, timestamp)
+        timeframe = metadata.analysis_timeframe
+        interval_minutes = {
+            Timeframe.ONE_MINUTE: 1,
+            Timeframe.FIVE_MINUTES: 5,
+            Timeframe.FIFTEEN_MINUTES: 15,
+            Timeframe.ONE_HOUR: 60,
+        }[timeframe]
         bars = self.provider.get_ohlcv(
             symbol,
-            Timeframe.ONE_MINUTE,
-            timestamp - pd.Timedelta(minutes=self.lookback_bars),
+            timeframe,
+            timestamp - pd.Timedelta(minutes=self.lookback_bars * interval_minutes),
             timestamp,
         )
         bars = list(bars[-self.lookback_bars :])
@@ -60,11 +68,12 @@ class MarketDataInputBuilder:
                 f"Insufficient market data for {symbol}: "
                 f"expected at least {minimum_bars}, got {len(bars)}"
             )
+        interval = pd.Timedelta(minutes=interval_minutes)
         validate_ohlcv(
             bars,
-            expected_interval=pd.Timedelta(minutes=1).to_pytimedelta(),
+            expected_interval=interval.to_pytimedelta(),
             as_of=timestamp,
-            max_staleness=pd.Timedelta(minutes=2).to_pytimedelta(),
+            max_staleness=(interval * 2).to_pytimedelta(),
         )
 
         frame = pd.DataFrame(
