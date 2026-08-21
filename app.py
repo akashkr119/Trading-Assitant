@@ -1,4 +1,4 @@
-"""Streamlit dashboard for the Trading Assistant V1."""
+"""Streamlit dashboard for the Trading Assistant."""
 
 # isort: skip_file
 
@@ -25,7 +25,6 @@ from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRec
 from trading_assistant.monitoring.state import MonitorStateMachine
 from trading_assistant.monitoring.swing_scanner import SwingScanner
 from trading_assistant.ui.theme import apply_theme, page_header, section_header
-
 
 st.set_page_config(
     page_title="Trading Assistant",
@@ -79,7 +78,6 @@ with st.sidebar:
         [item.value for item in app.broker.available_brokers()],
     )
     selected_broker = BrokerName(broker_name)
-
     token_name = {
         BrokerName.GROWW: "GROWW_ACCESS_TOKEN",
         BrokerName.UPSTOX: "UPSTOX_ACCESS_TOKEN",
@@ -174,17 +172,12 @@ with refresh_col:
         st.rerun()
 
 
-if not connected:
-    st.info(
-        "Connect Groww or Upstox to activate NSE scanning, live monitoring and swing analysis."
-    )
-else:
+if connected:
     section_header("⚡ Intraday Market Scanner")
     st.write(
-        "Scan the liquid NSE universe, review the strongest current setups and "
-        "choose the stock you want to monitor intraday."
+        "Scan the current NSE universe, rank the strongest setups and choose the "
+        "stock to monitor live."
     )
-
     scan_col, limit_col = st.columns([3, 1])
     with scan_col:
         scan_clicked = st.button(
@@ -197,30 +190,33 @@ else:
         scan_limit = st.selectbox("Candidates", [5, 10, 15], index=1)
 
     if scan_clicked:
-        scanner: MarketScanner = st.session_state.scanner
-        with st.spinner("Scanning liquid NSE stocks and ranking intraday setups..."):
-            st.session_state.scanner_candidates = scanner.scan(now, limit=scan_limit)
+        with st.spinner("Scanning current NSE intraday opportunities..."):
+            st.session_state.scanner_candidates = st.session_state.scanner.scan(
+                now,
+                limit=scan_limit,
+            )
         st.rerun()
 
     candidates = st.session_state.scanner_candidates
-    scanner = st.session_state.scanner
     if candidates:
         section_header("🔥 Best NSE Intraday Opportunities")
-        rows = [
-            {
-                "Rank": index,
-                "Symbol": item.symbol,
-                "Signal": item.direction,
-                "Score": f"{item.score:.0f}/100",
-                "Price": f"₹{item.price:.2f}",
-                "5m Move": f"{item.change_pct:+.2f}%",
-                "RVOL": f"{item.relative_volume:.2f}x",
-                "Why": item.reason,
-            }
-            for index, item in enumerate(candidates, 1)
-        ]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-
+        st.dataframe(
+            [
+                {
+                    "Rank": index,
+                    "Symbol": item.symbol,
+                    "Signal": item.direction,
+                    "Score": f"{item.score:.0f}/100",
+                    "Price": f"₹{item.price:.2f}",
+                    "5m Move": f"{item.change_pct:+.2f}%",
+                    "RVOL": f"{item.relative_volume:.2f}x",
+                    "Why": item.reason,
+                }
+                for index, item in enumerate(candidates, 1)
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
         candidate_symbols = [item.symbol for item in candidates]
         selected = st.selectbox(
             "🎯 Select a stock to trade",
@@ -234,27 +230,24 @@ else:
         )
         st.session_state.nse_intraday_selected = selected
         st.caption(
-            "The selected stock is monitored live. Entry/SL/targets are fixed when an "
-            "alert is created; current price and P/L remain live."
+            "Selected stock is monitored from fresh broker candles. "
+            "The scanner snapshot is not reused as live price."
         )
-
         if st.button("✅ Add selected stock to watchlist", type="secondary"):
             app.add_symbol(selected, now.isoformat())
             st.rerun()
     elif market_open:
         st.info("Run the intraday scanner to get ranked stock suggestions.")
-
-    if not candidates and not market_open:
+    else:
         st.warning("NSE regular session is closed. Intraday scanner is paused.")
-
-    intraday_live_slot = st.empty()
+else:
+    st.info("Connect Groww or Upstox to activate NSE scanning and live monitoring.")
 
 
 def _pnl_percent(direction: str, entry: float, price: float) -> float:
     if entry == 0:
         return 0.0
-    multiplier = 1.0 if direction == "BUY" else -1.0
-    return ((price - entry) / entry) * 100.0 * multiplier
+    return ((price - entry) / entry) * (1.0 if direction == "BUY" else -1.0) * 100.0
 
 
 def _outcome_r(record: SignalRecord, exit_price: float) -> float:
@@ -266,26 +259,21 @@ def _outcome_r(record: SignalRecord, exit_price: float) -> float:
     return (record.entry - exit_price) / risk
 
 
-def _support_resistance(
-    frame: pd.DataFrame,
-    price: float,
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
+def _support_resistance(frame: pd.DataFrame, price: float):
     supports: list[float] = []
     resistances: list[float] = []
     highs = frame["high"].to_numpy()
     lows = frame["low"].to_numpy()
     for index in range(1, len(frame) - 1):
-        if highs[index] >= highs[index - 1] and highs[index] > highs[index + 1]:
-            if highs[index] > price:
-                resistances.append(float(highs[index]))
-        if lows[index] <= lows[index - 1] and lows[index] < lows[index + 1]:
-            if lows[index] < price:
-                supports.append(float(lows[index]))
+        if highs[index] >= highs[index - 1] and highs[index] > highs[index + 1] and highs[index] > price:
+            resistances.append(float(highs[index]))
+        if lows[index] <= lows[index - 1] and lows[index] < lows[index + 1] and lows[index] < price:
+            supports.append(float(lows[index]))
 
-    def nearest(levels: list[float]) -> tuple[float, ...]:
+    def nearest(levels: list[float]):
         chosen: list[float] = []
         for level in sorted(levels, key=lambda value: abs(value - price)):
-            if not any(abs(level - item) / price < 0.002 for item in chosen):
+            if not any(abs(level - item) / max(price, 1e-9) < 0.002 for item in chosen):
                 chosen.append(level)
             if len(chosen) == 3:
                 break
@@ -295,17 +283,20 @@ def _support_resistance(
 
 
 def _live_stock_snapshot(symbol: str, current_time: datetime) -> dict[str, object]:
+    """Build the live terminal from fresh broker data every fragment run."""
     provider = st.session_state.live_service.builder.provider
-    bars = list(
-        provider.get_ohlcv(
-            symbol,
-            Timeframe.ONE_MINUTE,
-            current_time - pd.Timedelta(minutes=260).to_pytimedelta(),
-            current_time,
-        )
-    )
+    start = current_time - pd.Timedelta(minutes=260).to_pytimedelta()
+    bars = list(provider.get_ohlcv(symbol, Timeframe.ONE_MINUTE, start, current_time))
     if len(bars) < 30:
         raise ValueError(f"Insufficient 1m data for {symbol}: {len(bars)} candles")
+
+    # get_latest_bar is deliberately called separately so the terminal never
+    # depends on the scanner's cached/session snapshot for the current price.
+    latest = provider.get_latest_bar(symbol, Timeframe.ONE_MINUTE)
+    if latest.timestamp > bars[-1].timestamp:
+        bars.append(latest)
+    elif latest.timestamp == bars[-1].timestamp:
+        bars[-1] = latest
 
     frame = pd.DataFrame(
         [
@@ -320,22 +311,23 @@ def _live_stock_snapshot(symbol: str, current_time: datetime) -> dict[str, objec
             for bar in bars[-250:]
         ]
     )
+    frame = frame.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp")
     close = frame["close"]
+    price = float(latest.close)
     trend = supertrend(frame)
-    price = float(close.iloc[-1])
     supports, resistances = _support_resistance(frame, price)
     return {
         "price": price,
+        "timestamp": latest.timestamp,
         "ema9": float(ema(close, 9).iloc[-1]),
         "ema20": float(ema(close, 20).iloc[-1]),
         "rsi": float(rsi(close, 14).iloc[-1]),
         "macd": float(macd(close)["histogram"].iloc[-1]),
         "rvol": float(relative_volume(frame).iloc[-1]),
-        "supertrend": (
-            "BULLISH" if float(trend["direction"].iloc[-1]) > 0 else "BEARISH"
-        ),
+        "supertrend": "BULLISH" if float(trend["direction"].iloc[-1]) > 0 else "BEARISH",
         "supports": supports,
         "resistances": resistances,
+        "bars": len(frame),
     }
 
 
@@ -351,20 +343,11 @@ def _record_nse_alert(result, current_time: datetime, journal: SignalJournal) ->
         for record in existing
     ):
         return
-
     risk = result.risk_plan
     risk_amount = abs(risk.entry - risk.stop_loss)
-    target_2_r = (
-        abs(risk.target_2 - risk.entry) / risk_amount
-        if risk_amount
-        else 0.0
-    )
     journal.record(
         SignalRecord(
-            signal_id=(
-                f"nse-{result.symbol}-{action}-"
-                f"{current_time.isoformat()}"
-            ),
+            signal_id=f"nse-{result.symbol}-{action}-{current_time.isoformat()}",
             timestamp=current_time.isoformat(),
             market="NSE",
             symbol=result.symbol,
@@ -374,18 +357,13 @@ def _record_nse_alert(result, current_time: datetime, journal: SignalJournal) ->
             stop_loss=risk.stop_loss,
             target_1=risk.target_1,
             target_2=risk.target_2,
-            risk_reward=target_2_r,
+            risk_reward=(abs(risk.target_2 - risk.entry) / risk_amount if risk_amount else 0.0),
             reason=result.explanation.why_this_decision,
         )
     )
 
 
-def _update_nse_outcomes(
-    symbol: str,
-    price: float,
-    current_time: datetime,
-    journal: SignalJournal,
-) -> None:
+def _update_nse_outcomes(symbol: str, price: float, current_time: datetime, journal: SignalJournal) -> None:
     for record in journal.records():
         if record.symbol != symbol or record.status != "OPEN":
             continue
@@ -397,36 +375,44 @@ def _update_nse_outcomes(
             target_1_hit = price <= record.target_1
             target_2_hit = price <= record.target_2
             stop_hit = price >= record.stop_loss
-
-        sell_price = None
+        sell_price = record.target_2 if target_2_hit else record.stop_loss if stop_hit else None
+        journal.update_live_state(record.signal_id, target_1_hit, target_2_hit, stop_hit, sell_price)
         if target_2_hit:
-            sell_price = record.target_2
+            journal.resolve(record.signal_id, "TARGET_2_ACHIEVED", record.target_2, _outcome_r(record, record.target_2), current_time)
         elif stop_hit:
-            sell_price = record.stop_loss
+            journal.resolve(record.signal_id, "STOP_LOSS_HIT", record.stop_loss, _outcome_r(record, record.stop_loss), current_time)
 
-        journal.update_live_state(
-            record.signal_id,
-            target_1_hit,
-            target_2_hit,
-            stop_hit,
-            sell_price,
-        )
-        if target_2_hit:
-            journal.resolve(
-                record.signal_id,
-                "TARGET_2_ACHIEVED",
-                record.target_2,
-                _outcome_r(record, record.target_2),
-                current_time,
-            )
-        elif stop_hit:
-            journal.resolve(
-                record.signal_id,
-                "STOP_LOSS_HIT",
-                record.stop_loss,
-                _outcome_r(record, record.stop_loss),
-                current_time,
-            )
+
+def _technical_watch_state(snapshot: dict[str, object]) -> tuple[str, str]:
+    """Return a visible WATCH state even when no formal setup was triggered."""
+    bullish = 0
+    bearish = 0
+    if snapshot["price"] > snapshot["ema20"]:
+        bullish += 1
+    else:
+        bearish += 1
+    if snapshot["ema9"] > snapshot["ema20"]:
+        bullish += 1
+    else:
+        bearish += 1
+    if snapshot["macd"] > 0:
+        bullish += 1
+    else:
+        bearish += 1
+    if snapshot["supertrend"] == "BULLISH":
+        bullish += 1
+    else:
+        bearish += 1
+    if snapshot["rvol"] >= 1.0:
+        if bullish >= bearish:
+            bullish += 1
+        else:
+            bearish += 1
+    if bullish >= 4:
+        return "WATCH — bullish bias", "Bullish indicators are aligned, but the formal trade engine has not confirmed a BUY trigger."
+    if bearish >= 4:
+        return "WATCH — bearish bias", "Bearish indicators are aligned, but the formal trade engine has not confirmed a SELL trigger."
+    return "WATCH — mixed", "Indicators are mixed. Wait for stronger confirmation before considering a trade."
 
 
 @st.fragment(run_every=refresh_seconds if connected else None)
@@ -435,13 +421,15 @@ def selected_nse_intraday_panel() -> None:
     service: LiveAnalysisService | None = st.session_state.live_service
     if service is None or not symbol:
         return
-    if not service.builder.provider.is_market_open():
+    provider = service.builder.provider
+    if not provider.is_market_open():
         st.warning("NSE regular session is closed. Live intraday analysis is paused.")
         return
 
     current_time = datetime.now(IST)
     journal = SignalJournal("reports/nse_signal_journal.csv")
     try:
+        # Both analysis and terminal data are fetched on every fragment execution.
         results = service.analyze([symbol], current_time)
         result = next((item for item in results if item.symbol == symbol), None)
         snapshot = _live_stock_snapshot(symbol, current_time)
@@ -450,6 +438,8 @@ def selected_nse_intraday_panel() -> None:
         _update_nse_outcomes(symbol, float(snapshot["price"]), current_time, journal)
     except Exception as error:
         st.error(f"Unable to load live {symbol}: {error}")
+        if service.errors.get(symbol):
+            st.caption(f"Analysis error: {service.errors[symbol]}")
         return
 
     records = [record for record in journal.records() if record.symbol == symbol]
@@ -459,8 +449,8 @@ def selected_nse_intraday_panel() -> None:
     st.divider()
     section_header(f"📊 {symbol} Live Intraday Terminal")
     st.caption(
-        f"Live update: {current_time.strftime('%H:%M:%S IST')} · "
-        f"auto-refresh every {refresh_seconds}s"
+        f"Broker candle: {snapshot['timestamp'].strftime('%H:%M:%S %Z')} · "
+        f"terminal refreshed every {refresh_seconds}s · {snapshot['bars']} candles loaded"
     )
 
     metric_cols = st.columns(7)
@@ -475,38 +465,24 @@ def selected_nse_intraday_panel() -> None:
     level_cols = st.columns(2)
     with level_cols[0]:
         section_header("🟢 Support")
-        supports = snapshot["supports"]
-        if supports:
-            for index, level in enumerate(supports, 1):
-                st.write(f"S{index}: **₹{level:.2f}**")
-        else:
+        for index, level in enumerate(snapshot["supports"], 1):
+            st.write(f"S{index}: **₹{level:.2f}**")
+        if not snapshot["supports"]:
             st.info("No confirmed support below current price.")
     with level_cols[1]:
         section_header("🔴 Resistance")
-        resistances = snapshot["resistances"]
-        if resistances:
-            for index, level in enumerate(resistances, 1):
-                st.write(f"R{index}: **₹{level:.2f}**")
-        else:
+        for index, level in enumerate(snapshot["resistances"], 1):
+            st.write(f"R{index}: **₹{level:.2f}**")
+        if not snapshot["resistances"]:
             st.info("No confirmed resistance above current price.")
 
     section_header("🚨 Active Trading Alert")
     if active_alert is not None:
-        alert_text = "BUY" if active_alert.direction == "BUY" else "SELL"
-        if active_alert.direction == "BUY":
-            st.success(
-                f"🟢 LIVE {alert_text} ALERT — {symbol} · "
-                f"locked entry ₹{active_alert.entry:.2f}"
-            )
+        alert_text = active_alert.direction
+        if alert_text == "BUY":
+            st.success(f"🟢 LIVE BUY ALERT — {symbol} · locked entry ₹{active_alert.entry:.2f}")
         else:
-            st.error(
-                f"🔴 LIVE {alert_text} ALERT — {symbol} · "
-                f"locked entry ₹{active_alert.entry:.2f}"
-            )
-        st.caption(
-            "Entry, stop and targets remain fixed to the alert. "
-            "Only current price and P/L update live."
-        )
+            st.error(f"🔴 LIVE SELL ALERT — {symbol} · locked entry ₹{active_alert.entry:.2f}")
         st.write(active_alert.reason)
         plan_cols = st.columns(6)
         plan_cols[0].metric("Signal", alert_text)
@@ -514,14 +490,26 @@ def selected_nse_intraday_panel() -> None:
         plan_cols[2].metric("Stop Loss", f"₹{active_alert.stop_loss:.2f}")
         plan_cols[3].metric("Target 1", f"₹{active_alert.target_1:.2f}")
         plan_cols[4].metric("Target 2", f"₹{active_alert.target_2:.2f}")
-        pnl = _pnl_percent(
-            active_alert.direction,
-            active_alert.entry,
-            float(snapshot["price"]),
-        )
-        plan_cols[5].metric("Live P/L", f"{pnl:+.2f}%")
+        plan_cols[5].metric("Live P/L", f"{_pnl_percent(alert_text, active_alert.entry, float(snapshot['price'])):+.2f}%")
+    elif result is not None:
+        action = result.decision.action.value
+        if action in {"BUY", "SELL"}:
+            if result.risk_plan is None:
+                st.warning(f"🟡 {action} bias detected, but no valid risk plan was produced.")
+            else:
+                st.warning(f"🟡 {action} setup detected but not persisted as an active alert yet.")
+        elif action == "WATCH":
+            st.warning("🟡 WATCH — setup is promising but below the trade threshold.")
+        else:
+            st.info("⚪ NO TRADE — current evidence does not meet the trade requirements.")
+        st.write(result.explanation.why_this_decision)
+        st.caption(f"Decision score: {result.decision.score:.1f}/100 · R:R: {result.decision.risk_reward:.2f}")
     else:
-        st.info("No active BUY/SELL alert is locked for this stock yet.")
+        label, reason = _technical_watch_state(snapshot)
+        st.warning(f"🟡 {label}")
+        st.write(reason)
+        if service.errors.get(symbol):
+            st.caption(f"Analysis diagnostic: {service.errors[symbol]}")
 
     if records:
         section_header("📒 Alert History")
@@ -547,36 +535,18 @@ def selected_nse_intraday_panel() -> None:
 if connected:
     selected_nse_intraday_panel()
 
-
-if connected:
     st.divider()
     section_header("📅 Swing Opportunities")
-    st.caption(
-        "Scan the broader NSE universe for multi-day opportunities. "
-        "Swing ideas are separate from live intraday alerts."
-    )
+    st.caption("Scan the broader NSE universe for multi-day opportunities. Swing ideas are separate from live intraday alerts.")
     swing_col, swing_limit_col = st.columns([3, 1])
     with swing_col:
-        swing_clicked = st.button(
-            "🔎 Scan swing opportunities",
-            use_container_width=True,
-        )
+        swing_clicked = st.button("🔎 Scan swing opportunities", use_container_width=True)
     with swing_limit_col:
-        swing_limit = st.selectbox(
-            "Swing candidates",
-            [5, 10, 15],
-            index=1,
-        )
+        swing_limit = st.selectbox("Swing candidates", [5, 10, 15], index=1)
     if swing_clicked:
-        swing_scanner: SwingScanner = st.session_state.swing_scanner
         with st.spinner("Scanning NSE stocks for swing opportunities..."):
-            st.session_state.swing_candidates = swing_scanner.scan(
-                now,
-                limit=swing_limit,
-            )
-
-    swing_candidates = st.session_state.swing_candidates
-    if swing_candidates:
+            st.session_state.swing_candidates = st.session_state.swing_scanner.scan(now, limit=swing_limit)
+    if st.session_state.swing_candidates:
         st.dataframe(
             [
                 {
@@ -587,7 +557,7 @@ if connected:
                     "Price": f"₹{item.price:.2f}",
                     "Why": item.reason,
                 }
-                for index, item in enumerate(swing_candidates, 1)
+                for index, item in enumerate(st.session_state.swing_candidates, 1)
             ],
             use_container_width=True,
             hide_index=True,
