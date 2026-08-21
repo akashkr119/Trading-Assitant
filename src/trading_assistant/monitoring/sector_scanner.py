@@ -1,5 +1,7 @@
 """Live NSE sector performance and symbol classification helpers."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 from dataclasses import dataclass
