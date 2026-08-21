@@ -186,7 +186,11 @@ def _update_trade_outcome(candidate: CryptoCandidate, live_price: float) -> Sign
     return next((item for item in records if item.signal_id == record.signal_id), record)
 
 
-def _render_trade_outcome(record: SignalRecord | None, candidate: CryptoCandidate, live_price: float) -> None:
+def _render_trade_outcome(
+    record: SignalRecord | None,
+    candidate: CryptoCandidate,
+    live_price: float,
+) -> None:
     """Show live target/stop progress and the persisted outcome state."""
     section_header("🎯 Trade Outcome Tracking")
     if record is None:
