@@ -34,7 +34,7 @@ def test_market_scanner_returns_ranked_candidates() -> None:
 
     assert len(result) == 1
     assert result[0].symbol == "AAA"
-    assert result[0].direction == "BUY"
+    assert result[0].direction == "BULLISH"
     assert result[0].score >= 50.0
     assert result[0].price > 100.0
 
