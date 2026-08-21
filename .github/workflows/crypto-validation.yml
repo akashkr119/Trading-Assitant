@@ -33,11 +33,14 @@ jobs:
       - name: Run one validation cycle
         run: python tools/crypto_validation_runner.py --once
 
-      - name: Persist validation journal
+      - name: Build validation summary
+        run: python tools/crypto_validation_report.py
+
+      - name: Persist validation state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/crypto_validation_journal.csv
+          git add reports/crypto_validation_journal.csv reports/crypto_validation_summary.md
           if git diff --cached --quiet; then
             echo "No validation state changed."
             exit 0
