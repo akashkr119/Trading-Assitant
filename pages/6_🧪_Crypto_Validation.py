@@ -7,11 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from trading_assistant.ui.theme import (
-    apply_theme,
-    page_header,
-    section_header,
-)
+from trading_assistant.ui.theme import apply_theme, page_header, section_header
 
 
 JOURNAL_PATH = Path("reports/crypto_validation_journal.csv")
