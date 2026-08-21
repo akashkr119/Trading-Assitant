@@ -9,7 +9,7 @@ from trading_assistant.monitoring.crypto_intraday_scanner import (
     CryptoCandidate,
     RobustCryptoIntradayScanner,
 )
-from trading_assistant.monitoring.signal_journal import SignalJournal
+from trading_assistant.monitoring.signal_journal import SignalJournal, SignalRecord
 from trading_assistant.ui.theme import inject_responsive_css, page_header, section_header
 
 st.set_page_config(page_title="Crypto Trading", page_icon="🪙", layout="wide")
@@ -56,6 +56,58 @@ def _live_signal_state(candidate: CryptoCandidate, snapshot) -> tuple[str, str]:
     if not trend_ok and not trend_15_ok and not macd_ok:
         return "REVERSAL WATCH", "Multiple live indicators now oppose the original scan direction."
     return "WATCH", "The original signal remains locked, but live confirmation is mixed."
+
+
+def _record_scan_alerts(candidates: tuple[CryptoCandidate, ...], timestamp: datetime) -> None:
+    """Persist confirmed BUY/SELL scan decisions without duplicating an open plan."""
+    existing = [record for record in journal.records() if record.market == "CRYPTO"]
+    for candidate in candidates:
+        if candidate.score < 75:
+            continue
+        duplicate = any(
+            record.symbol == candidate.symbol
+            and record.direction == candidate.direction
+            and record.status == "OPEN"
+            and abs(record.entry - candidate.entry) / max(candidate.entry, 1e-12) < 0.0005
+            for record in existing
+        )
+        if duplicate:
+            continue
+        journal.record(
+            SignalRecord(
+                signal_id=(
+                    f"crypto-{candidate.symbol}-{candidate.direction}-"
+                    f"{timestamp.isoformat()}"
+                ),
+                timestamp=timestamp.isoformat(),
+                market="CRYPTO",
+                symbol=candidate.symbol,
+                direction=candidate.direction,
+                score=candidate.score,
+                entry=candidate.entry,
+                stop_loss=candidate.stop_loss,
+                target_1=candidate.target_1,
+                target_2=candidate.target_2,
+                risk_reward=candidate.risk_reward,
+                reason=candidate.reason,
+            )
+        )
+        existing.append(
+            SignalRecord(
+                signal_id="temporary",
+                timestamp=timestamp.isoformat(),
+                market="CRYPTO",
+                symbol=candidate.symbol,
+                direction=candidate.direction,
+                score=candidate.score,
+                entry=candidate.entry,
+                stop_loss=candidate.stop_loss,
+                target_1=candidate.target_1,
+                target_2=candidate.target_2,
+                risk_reward=candidate.risk_reward,
+                reason=candidate.reason,
+            )
+        )
 
 
 def _render_live_selected_coin(
@@ -133,13 +185,20 @@ def _render_live_selected_coin(
         st.info(f"🔵 CURRENT STATE — {state}")
     st.write(state_reason)
 
-    plan_cols = st.columns(6)
+    scan_time = st.session_state.get("crypto_scan_timestamp")
+    plan_cols = st.columns(7)
     plan_cols[0].metric("Signal", candidate.direction)
     plan_cols[1].metric("Scan Score", f"{candidate.score:.0f}/100")
-    plan_cols[2].metric("Locked Entry", f"{candidate.entry:.8g}")
-    plan_cols[3].metric("Stop Loss", f"{candidate.stop_loss:.8g}")
-    plan_cols[4].metric("Target 1", f"{candidate.target_1:.8g}")
-    plan_cols[5].metric("Target 2", f"{candidate.target_2:.8g}")
+    plan_cols[2].metric("Live Confirmation", f"{passed}/{total}")
+    plan_cols[3].metric("Locked Entry", f"{candidate.entry:.8g}")
+    plan_cols[4].metric("Stop Loss", f"{candidate.stop_loss:.8g}")
+    plan_cols[5].metric("Target 1", f"{candidate.target_1:.8g}")
+    plan_cols[6].metric("Target 2", f"{candidate.target_2:.8g}")
+    if scan_time is not None:
+        st.caption(
+            f"Scan score is locked from {scan_time.strftime('%Y-%m-%d %H:%M:%S UTC')}; "
+            "live confirmation is recalculated every 5 seconds."
+        )
 
     entry_distance = abs(snapshot.price - candidate.entry) / candidate.entry * 100
     entry_status = (
@@ -181,9 +240,11 @@ with limit_col:
 
 if scan_clicked:
     with st.spinner("Scanning crypto pairs and ranking intraday setups..."):
-        st.session_state.crypto_candidates = scanner.scan(
-            datetime.now(timezone.utc), limit=scan_limit
-        )
+        scan_time = datetime.now(timezone.utc)
+        scanned_candidates = scanner.scan(scan_time, limit=scan_limit)
+        st.session_state.crypto_candidates = scanned_candidates
+        st.session_state.crypto_scan_timestamp = scan_time
+        _record_scan_alerts(scanned_candidates, scan_time)
 
 candidates = st.session_state.get("crypto_candidates", ())
 if candidates:
@@ -232,7 +293,7 @@ else:
     st.warning("No ranked crypto setup is available yet. Run a scan to populate opportunities.")
 
 section_header("📒 BUY / SELL Alert History")
-records = journal.records()
+records = [record for record in journal.records() if record.market == "CRYPTO"]
 if records:
     st.dataframe(
         [
@@ -248,7 +309,9 @@ if records:
                 "Score": f"{record.score:.0f}/100",
             }
             for record in reversed(records)
-        ], use_container_width=True, hide_index=True
+        ],
+        use_container_width=True,
+        hide_index=True,
     )
 else:
     st.info("No BUY/SELL alerts have been recorded yet.")
