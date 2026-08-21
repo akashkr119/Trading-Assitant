@@ -1,6 +1,7 @@
 from trading_assistant.monitoring.sector_scanner import SectorSnapshot, symbol_sector
 
 
+# CI smoke coverage for live NSE sector classification.
 def test_symbol_sector_classifies_common_nse_stocks() -> None:
     assert symbol_sector("HDFCBANK") == "Banking"
     assert symbol_sector("TCS") == "IT"
