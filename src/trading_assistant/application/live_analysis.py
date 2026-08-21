@@ -43,13 +43,17 @@ class TechnicalMetadataLoader:
     def load(self, symbol: str, timestamp: datetime) -> AnalysisMetadata:
         primary_bars = self._bars(symbol, self.analysis_timeframe, timestamp)
         frame = self._frame(primary_bars)
-        close = frame["close"]
+        numeric = frame[["open", "high", "low", "close", "volume"]].apply(
+            pd.to_numeric,
+            errors="raise",
+        )
+        close = numeric["close"]
         ema9_values = ema(close, 9)
         ema20_values = ema(close, 20)
         rsi_values = rsi(close, 14)
         macd_values = macd(close)
-        supertrend_values = supertrend(frame)
-        relative_volume_values = relative_volume(frame)
+        supertrend_values = supertrend(numeric)
+        relative_volume_values = relative_volume(numeric)
 
         latest_close = float(close.iloc[-1])
         ema9_value = float(ema9_values.iloc[-1])
@@ -77,12 +81,15 @@ class TechnicalMetadataLoader:
         stock_score += 10.0 if volume_confirmed else 0.0
         stock_score += 10.0 if rsi_confirmed else 0.0
 
-        confirmation_frame = frame
+        confirmation_frame = numeric
         if self.analysis_timeframe != Timeframe.ONE_MINUTE:
             one_minute = self._bars(symbol, Timeframe.ONE_MINUTE, timestamp)
             confirmation_frame = self._frame(one_minute)
+            confirmation_frame = confirmation_frame[
+                ["open", "high", "low", "close", "volume"]
+            ].apply(pd.to_numeric, errors="raise")
         confirmation_supertrend = supertrend(confirmation_frame)
-        confirmation_macd = macd(confirmation_frame)["histogram"]
+        confirmation_macd = macd(confirmation_frame["close"])["histogram"]
         confirmation_rvol = relative_volume(confirmation_frame)
         confirmation_bullish = float(confirmation_frame["close"].iloc[-1]) >= float(
             ema(confirmation_frame["close"], 20).iloc[-1]
@@ -99,7 +106,7 @@ class TechnicalMetadataLoader:
         confirmation_score += 20.0 if float(confirmation_rvol.iloc[-1]) >= 1.2 else 0.0
 
         entry = latest_close
-        recent = frame.tail(20)
+        recent = numeric.tail(20)
         if bullish:
             stop_loss = min(float(recent["low"].min()), entry * 0.995)
             risk = max(entry - stop_loss, entry * 0.005)
@@ -183,7 +190,7 @@ class TechnicalMetadataLoader:
     ) -> TimeframeTrend:
         bars = self._bars(symbol, timeframe, timestamp)
         frame = self._frame(bars)
-        close = frame["close"]
+        close = pd.to_numeric(frame["close"], errors="raise")
         if len(close) < 20:
             direction = "neutral"
         else:
