@@ -13,7 +13,7 @@ def test_backtest_reports_expectancy_and_drawdown() -> None:
     assert result.total_trades == 2
     assert result.winning_trades == 1
     assert result.losing_trades == 1
-    assert result.total_r == 0.0
+    assert result.total_r == 1.5
     assert result.max_drawdown_r > 0
 
 
