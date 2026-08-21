@@ -15,11 +15,9 @@ import pandas as pd
 from trading_assistant.data.interfaces import MarketDataProvider, OHLCVBar, Timeframe
 from trading_assistant.data.reliability import RetryPolicy, with_retry
 from trading_assistant.indicators import ema, macd, relative_volume, rsi
+from trading_assistant.monitoring.sector_scanner import symbol_sector
 
 
-# Emergency fallback only. During normal operation the scanner discovers the
-# current most-active NSE equities from the exchange and ranks them again using
-# broker candles. This list is not the scanner's primary universe.
 _FALLBACK_UNIVERSE = (
     "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "SBIN", "BHARTIARTL",
     "INFY", "ITC", "LT", "AXISBANK", "BAJFINANCE", "KOTAKBANK", "MARUTI",
@@ -44,6 +42,8 @@ class ScanCandidate:
     change_pct: float
     relative_volume: float
     reason: str
+    sector: str = "Other"
+
 
 
 def _nse_active_symbols(activity: str, limit: int = 40) -> tuple[str, ...]:
@@ -62,7 +62,7 @@ def _nse_active_symbols(activity: str, limit: int = 40) -> tuple[str, ...]:
     symbols: list[str] = []
     for item in payload.get("data", []):
         symbol = str(item.get("symbol", "")).strip().upper()
-        if symbol and symbol.isalnum() and symbol not in symbols:
+        if symbol and symbol.replace("&", "").replace("-", "").isalnum() and symbol not in symbols:
             symbols.append(symbol)
         if len(symbols) >= limit:
             break
@@ -208,4 +208,5 @@ class MarketScanner:
             change_pct=change_pct,
             relative_volume=relative_volume_value,
             reason=reason,
+            sector=symbol_sector(symbol),
         )
