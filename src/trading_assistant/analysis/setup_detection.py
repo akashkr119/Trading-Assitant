@@ -26,6 +26,7 @@ class SetupType(StrEnum):
     EMA_BEARISH_CROSS = "ema_bearish_cross"
     VWAP_RECLAIM = "vwap_reclaim"
     VWAP_REJECTION = "vwap_rejection"
+    TREND_CONTINUATION = "trend_continuation"
 
 
 class SetupDirection(StrEnum):
