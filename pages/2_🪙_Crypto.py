@@ -31,7 +31,11 @@ journal = SignalJournal()
 def _live_signal_state(candidate: CryptoCandidate, snapshot) -> tuple[str, str]:
     """Describe current health without rewriting the locked scan signal."""
     long = candidate.direction == "LONG"
-    invalidated = snapshot.price <= candidate.stop_loss if long else snapshot.price >= candidate.stop_loss
+    invalidated = (
+        snapshot.price <= candidate.stop_loss
+        if long
+        else snapshot.price >= candidate.stop_loss
+    )
     if invalidated:
         return "INVALIDATED", "Price has crossed the locked stop-loss level."
 
@@ -45,7 +49,10 @@ def _live_signal_state(candidate: CryptoCandidate, snapshot) -> tuple[str, str]:
     if trend_ok and trend_15_ok and ema_ok and macd_ok and rsi_ok and rvol_ok:
         return "CONFIRMED", "Live conditions still confirm the original scan direction."
     if trend_ok and trend_15_ok and ema_ok and macd_ok:
-        return "MOMENTUM COOLING", "Trend, EMA and MACD remain aligned, but one confirmation is weaker."
+        return (
+            "MOMENTUM COOLING",
+            "Trend, EMA and MACD remain aligned, but one confirmation is weaker.",
+        )
     if not trend_ok and not trend_15_ok and not macd_ok:
         return "REVERSAL WATCH", "Multiple live indicators now oppose the original scan direction."
     return "WATCH", "The original signal remains locked, but live confirmation is mixed."
@@ -212,7 +219,8 @@ if candidates:
     )
     if selected_candidate is not None:
         st.caption(
-            "Live indicators update automatically. Entry, stop and targets remain locked to the latest scan."
+            "Live indicators update automatically. Entry, stop and targets remain "
+            "locked to the latest scan."
         )
 
         @st.fragment(run_every="5s")
@@ -257,5 +265,6 @@ if scanner.last_scan_count:
 st.divider()
 section_header("📅 Crypto Swing")
 st.info(
-    "Crypto Swing is the next module. Crypto Intraday remains independent while its live scanner is validated."
+    "Crypto Swing is the next module. Crypto Intraday remains independent while "
+    "its live scanner is validated."
 )
