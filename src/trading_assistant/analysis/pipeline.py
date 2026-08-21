@@ -64,7 +64,7 @@ _ALIGNMENT_SCORE = {
 
 
 def _trend_continuation_setup(inputs: StockAnalysisInput) -> SetupCandidate | None:
-    """Create a setup when live indicators agree but no one-candle trigger fired."""
+    """Create a setup when most live trend evidence agrees."""
     frame = inputs.frame
     if len(frame) < 30:
         return None
@@ -82,26 +82,29 @@ def _trend_continuation_setup(inputs: StockAnalysisInput) -> SetupCandidate | No
     relative_volume_value = float(relative_volume_values.iloc[index])
     supertrend_direction = float(supertrend_values["direction"].iloc[index])
 
-    bullish = (
-        price > ema20_value
-        and ema9_value > ema20_value
-        and macd_histogram > 0
-        and supertrend_direction > 0
-        and relative_volume_value >= 1.0
+    bullish_votes = (
+        int(price > ema20_value),
+        int(ema9_value > ema20_value),
+        int(macd_histogram > 0),
+        int(supertrend_direction > 0),
+        int(relative_volume_value >= 0.8),
     )
-    bearish = (
-        price < ema20_value
-        and ema9_value < ema20_value
-        and macd_histogram < 0
-        and supertrend_direction < 0
-        and relative_volume_value >= 1.0
+    bearish_votes = (
+        int(price < ema20_value),
+        int(ema9_value < ema20_value),
+        int(macd_histogram < 0),
+        int(supertrend_direction < 0),
+        int(relative_volume_value >= 0.8),
     )
+    bullish = sum(bullish_votes) >= 4
+    bearish = sum(bearish_votes) >= 4
     if not bullish and not bearish:
         return None
 
     direction = SetupDirection.BULLISH if bullish else SetupDirection.BEARISH
-    confidence = min(95.0, 65.0 + relative_volume_value * 10.0)
     side = "bullish" if bullish else "bearish"
+    votes = sum(bullish_votes) if bullish else sum(bearish_votes)
+    confidence = min(95.0, 60.0 + votes * 5.0 + min(relative_volume_value, 2.0) * 5.0)
     invalidation = (
         f"Close below EMA 20 for {side} setup"
         if bullish
@@ -117,7 +120,7 @@ def _trend_continuation_setup(inputs: StockAnalysisInput) -> SetupCandidate | No
             f"EMA 9 {side} of EMA 20",
             f"MACD histogram {side}",
             f"Supertrend {side}",
-            "relative volume >= 1.0",
+            "relative volume >= 0.8",
         ),
         invalidation,
     )
