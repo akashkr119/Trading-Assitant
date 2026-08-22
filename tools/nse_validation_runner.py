@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import os
 import time
+from datetime import datetime
 
 from trading_assistant.application.live_analysis import LiveAnalysisService
 from trading_assistant.brokers.connection import BrokerName
