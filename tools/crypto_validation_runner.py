@@ -64,8 +64,9 @@ def _record_new_alerts(
         )
         if duplicate:
             continue
-        journal.record(_candidate_record(candidate, timestamp))
-        records.append(_candidate_record(candidate, timestamp))
+        record = _candidate_record(candidate, timestamp)
+        journal.record(record)
+        records.append(record)
         added += 1
     return added
 
@@ -78,25 +79,38 @@ def _open_validation_records(journal: SignalJournal) -> list[SignalRecord]:
     ]
 
 
+def _first_closed_bar_start(signal_timestamp: datetime) -> datetime:
+    """Return the first full 1m candle that begins after the signal."""
+    return signal_timestamp.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+
 def _update_outcomes(
     provider: BinanceMarketDataProvider,
     journal: SignalJournal,
     timestamp: datetime,
 ) -> int:
-    """Check recent 1m candles so short-lived target/stop touches are not missed."""
+    """Evaluate only candles that formed after each alert was generated."""
     resolved = 0
-    start = timestamp - timedelta(minutes=10)
+    current_bar_start = timestamp.replace(second=0, microsecond=0)
     for record in _open_validation_records(journal):
         try:
+            signal_timestamp = datetime.fromisoformat(record.timestamp)
+            start = _first_closed_bar_start(signal_timestamp)
+            if start >= current_bar_start:
+                continue
             bars = provider.get_ohlcv(
                 record.symbol,
                 Timeframe.ONE_MINUTE,
                 start,
-                timestamp,
+                current_bar_start,
             )
         except Exception:
             continue
+
         for bar in bars:
+            # Never use a candle from before the alert or the still-forming candle.
+            if bar.timestamp < start or bar.timestamp >= current_bar_start:
+                continue
             long = record.direction == "LONG"
             target_1 = bar.high >= record.target_1 if long else bar.low <= record.target_1
             target_2 = bar.high >= record.target_2 if long else bar.low <= record.target_2
