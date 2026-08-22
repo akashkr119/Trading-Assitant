@@ -1,0 +1,1 @@
+signal_id,timestamp,market,symbol,direction,score,entry,stop_loss,target_1,target_2,risk_reward,reason,status,exit_price,outcome_r,resolved_at,target_1_achieved,target_2_achieved,stop_loss_hit,sell_price
